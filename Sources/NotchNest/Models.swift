@@ -92,6 +92,7 @@ enum NotchTab: String, CaseIterable {
     case music = "Music"
     case calendar = "Calendar"
     case weather = "Weather"
+    case timer = "Timer"
     case mirror = "Mirror"
     case shelf = "Shelf"
 
@@ -100,10 +101,16 @@ enum NotchTab: String, CaseIterable {
         case .music: return "music.note"
         case .calendar: return "calendar"
         case .weather: return "cloud.sun.fill"
+        case .timer: return "timer"
         case .mirror: return "camera.fill"
         case .shelf: return "tray.full"
         }
     }
+}
+
+func formatMMSS(_ t: TimeInterval) -> String {
+    let s = Int(t.rounded())
+    return String(format: "%d:%02d", s / 60, s % 60)
 }
 
 // MARK: - Generic alert toast (rain, battery, …)

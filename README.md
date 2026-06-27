@@ -35,6 +35,11 @@ Built & tested on an M3 MacBook Pro, macOS Tahoe (26/27), Swift 6.4 / Xcode 27.
   gradient** that changes with the time of day and conditions.
 - **Rain-soon alert** toast when precipitation looks likely in the next few hours.
 
+### ⏱️ Timer / Pomodoro
+- A **Timer tab** with quick presets (1/5/10/25 min) and a **Pomodoro** button.
+- A **countdown ring traces the notch outline** while it runs, the remaining time
+  shows in the collapsed pill, and it chimes + toasts when done.
+
 ### 📷 Camera mirror
 - A **Mirror tab** with a live front-camera preview for a quick look before calls.
   Camera runs only while the tab is open. Requires camera permission.

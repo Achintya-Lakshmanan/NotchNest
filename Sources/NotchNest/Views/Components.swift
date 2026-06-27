@@ -410,6 +410,23 @@ struct HUDView: View {
     }
 }
 
+// MARK: - Timer pill (collapsed notch)
+
+struct TimerPill: View {
+    let remaining: TimeInterval
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "timer")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.orange)
+            Text(formatMMSS(remaining))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .monospacedDigit()
+        }
+    }
+}
+
 // MARK: - Meeting countdown pill (collapsed notch)
 
 struct MeetingPill: View {

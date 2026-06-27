@@ -119,6 +119,15 @@ enum Snapshot {
                                tint: Color(red: 0.5, green: 0.8, blue: 1.0))
         render(s11, size: metrics.toastSize, to: base.appendingPathComponent("11_rain_alert.png"))
 
+        // 12. Timer running
+        let s12 = NotchState(metrics: metrics)
+        s12.isExpanded = true
+        s12.tab = .timer
+        s12.timerDuration = 25 * 60
+        s12.timerRemaining = 15 * 60
+        s12.timerRunning = true
+        render(s12, size: metrics.expandedSize, to: base.appendingPathComponent("12_timer.png"))
+
         // 5. Compact — playing + charging
         let s5 = NotchState(metrics: metrics)
         s5.nowPlaying = s1.nowPlaying

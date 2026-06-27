@@ -29,6 +29,14 @@ struct NotchRootView: View {
                 .shadow(color: state.chargeFlash ? .green.opacity(0.45) : .clear,
                        radius: state.chargeFlash ? 14 : 0)
 
+            // Timer countdown ring tracing the notch outline.
+            if state.timerRunning {
+                NotchShape()
+                    .trim(from: 0, to: state.timerProgress)
+                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                    .animation(.linear(duration: 0.5), value: state.timerProgress)
+            }
+
             if let hud = state.hud, !state.isExpanded {
                 HUDView(hud: hud)
                     .padding(.top, max(4, state.metrics.notchHeight))

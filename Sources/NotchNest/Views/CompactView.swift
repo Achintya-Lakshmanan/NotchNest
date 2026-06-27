@@ -13,9 +13,12 @@ struct CompactView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // Left widget — imminent meeting takes priority, then art / shelf.
+            // Left widget — running timer first, then meeting, art, shelf.
             HStack {
-                if showMeeting, let ev = state.imminentEvent {
+                if state.timerRunning {
+                    TimerPill(remaining: state.timerRemaining)
+                        .transition(.scale.combined(with: .opacity))
+                } else if showMeeting, let ev = state.imminentEvent {
                     MeetingPill(event: ev)
                         .transition(.scale.combined(with: .opacity))
                 } else if let np = state.nowPlaying {

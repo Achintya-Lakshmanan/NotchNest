@@ -15,6 +15,7 @@ struct ExpandedView: View {
                 case .music: MusicPane()
                 case .calendar: CalendarPane()
                 case .weather: WeatherPane()
+                case .timer: TimerPane()
                 case .mirror: MirrorPane()
                 case .shelf: ShelfPane()
                 }
@@ -276,6 +277,74 @@ struct ShelfChip: View {
         }
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovering = h } }
         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
+    }
+}
+
+// MARK: - Timer pane
+
+struct TimerPane: View {
+    @EnvironmentObject var state: NotchState
+    private let presets = [1, 5, 10, 25]
+
+    var body: some View {
+        HStack(spacing: 22) {
+            ZStack {
+                Circle().stroke(.white.opacity(0.12), lineWidth: 8)
+                Circle()
+                    .trim(from: 0, to: state.timerProgress)
+                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 0.5), value: state.timerProgress)
+                VStack(spacing: 1) {
+                    Text(formatMMSS(state.timerRemaining))
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                    Text(state.timerRunning ? "remaining" : "timer")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .frame(width: 124, height: 124)
+
+            VStack(alignment: .leading, spacing: 10) {
+                if state.timerRunning || state.timerRemaining != state.timerDuration {
+                    HStack(spacing: 8) {
+                        pill(state.timerRunning ? "Pause" : "Resume",
+                             icon: state.timerRunning ? "pause.fill" : "play.fill",
+                             color: .orange) {
+                            state.timerRunning ? state.pauseTimer() : state.startTimer()
+                        }
+                        pill("Reset", icon: "arrow.counterclockwise", color: .white.opacity(0.15)) {
+                            state.resetTimer()
+                        }
+                    }
+                }
+                Text("Quick start").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
+                HStack(spacing: 8) {
+                    ForEach(presets, id: \.self) { m in
+                        pill("\(m)m", color: .white.opacity(0.12)) { state.setTimer(minutes: m) }
+                    }
+                }
+                pill("🍅 Pomodoro 25:00", color: .white.opacity(0.12)) { state.setTimer(minutes: 25) }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func pill(_ title: String, icon: String? = nil, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
+                Text(title).font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .background(color, in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }
 

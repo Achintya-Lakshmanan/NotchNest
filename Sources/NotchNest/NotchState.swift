@@ -40,6 +40,17 @@ final class NotchState: ObservableObject {
     @Published var hud: HUDInfo?
     private var hudToken = 0
 
+    // Timer
+    @Published var timerRunning = false
+    @Published var timerRemaining: TimeInterval = 25 * 60
+    @Published var timerDuration: TimeInterval = 25 * 60
+    private var timerEnd: Date?
+    private var ticker: Timer?
+
+    var timerProgress: Double {
+        timerDuration > 0 ? max(0, min(1, timerRemaining / timerDuration)) : 0
+    }
+
     let metrics: NotchMetrics
     let media = MediaController()
     let calendar = CalendarService()
@@ -175,6 +186,59 @@ final class NotchState: ObservableObject {
                                  subtitle: "100%", tint: .green))
         } else if newValue.level < 0.95 || !newValue.isPluggedIn {
             fullNotified = false
+        }
+    }
+
+    // MARK: Timer
+
+    func setTimer(minutes: Int) {
+        let d = TimeInterval(minutes * 60)
+        timerDuration = d
+        timerRemaining = d
+        startTimer()
+    }
+
+    func startTimer() {
+        if timerRemaining <= 0 { timerRemaining = timerDuration }
+        timerEnd = Date().addingTimeInterval(timerRemaining)
+        timerRunning = true
+        ticker?.invalidate()
+        ticker = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tickTimer() }
+        }
+    }
+
+    func pauseTimer() {
+        timerRunning = false
+        ticker?.invalidate(); ticker = nil
+        if let end = timerEnd { timerRemaining = max(0, end.timeIntervalSinceNow) }
+        timerEnd = nil
+    }
+
+    func resetTimer() {
+        timerRunning = false
+        ticker?.invalidate(); ticker = nil
+        timerEnd = nil
+        timerRemaining = timerDuration
+    }
+
+    private func tickTimer() {
+        guard let end = timerEnd else { return }
+        timerRemaining = max(0, end.timeIntervalSinceNow)
+        if timerRemaining <= 0 { finishTimer() }
+    }
+
+    private func finishTimer() {
+        ticker?.invalidate(); ticker = nil
+        timerEnd = nil
+        timerRunning = false
+        timerRemaining = 0
+        NSSound(named: "Glass")?.play()
+        showAlert(AlertToast(symbol: "timer", title: "Timer Done",
+                             subtitle: "\(Int(timerDuration / 60)) min finished", tint: .orange))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self else { return }
+            self.timerRemaining = self.timerDuration
         }
     }
 
