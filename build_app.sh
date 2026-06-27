@@ -15,8 +15,16 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/NotchNest"
 cp Info.plist "$APP/Contents/Info.plist"
 
-# Ad-hoc sign so macOS keeps a stable identity for permission grants.
-codesign --force --deep --sign - "$APP" 2>/dev/null || true
+# Sign with a stable identity (Apple Development / Developer ID) so macOS keeps
+# permission grants (Accessibility, etc.) across rebuilds. Falls back to ad-hoc.
+IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development|Developer ID/{print $2; exit}')
+if [ -n "$IDENTITY" ]; then
+  echo "▸ Signing with identity $IDENTITY"
+  codesign --force --deep --sign "$IDENTITY" "$APP"
+else
+  echo "▸ Ad-hoc signing (no stable identity found)"
+  codesign --force --deep --sign - "$APP" 2>/dev/null || true
+fi
 
 echo "✓ Built $(pwd)/$APP"
 echo "  Run it with:  open $APP"
