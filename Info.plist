@@ -28,5 +28,7 @@
     <string>NotchNest shows your events for today in the notch.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>NotchNest shows your events for today in the notch.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>NotchNest shows a front-camera mirror in the notch.</string>
 </dict>
 </plist>

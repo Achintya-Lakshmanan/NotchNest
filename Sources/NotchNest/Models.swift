@@ -92,6 +92,7 @@ enum NotchTab: String, CaseIterable {
     case music = "Music"
     case calendar = "Calendar"
     case weather = "Weather"
+    case mirror = "Mirror"
     case shelf = "Shelf"
 
     var symbol: String {
@@ -99,9 +100,19 @@ enum NotchTab: String, CaseIterable {
         case .music: return "music.note"
         case .calendar: return "calendar"
         case .weather: return "cloud.sun.fill"
+        case .mirror: return "camera.fill"
         case .shelf: return "tray.full"
         }
     }
+}
+
+// MARK: - Generic alert toast (rain, battery, …)
+
+struct AlertToast: Equatable {
+    var symbol: String
+    var title: String
+    var subtitle: String
+    var tint: Color
 }
 
 // MARK: - Weather
@@ -126,6 +137,13 @@ struct WeatherInfo: Equatable {
     var hourly: [HourForecast] = []
 
     var symbol: String { WeatherInfo.symbol(code: code, isDay: isDay) }
+
+    static func isPrecip(_ code: Int) -> Bool {
+        switch code {
+        case 51...67, 71...77, 80...86, 95...99: return true
+        default: return false
+        }
+    }
 
     static func symbol(code: Int, isDay: Bool) -> String {
         switch code {

@@ -29,9 +29,19 @@ Built & tested on an M3 MacBook Pro, macOS Tahoe (26/27), Swift 6.4 / Xcode 27.
 - Per-item **AirDrop** button and an **AirDrop all** action (system AirDrop sheet).
 
 ### 🌤️ Weather
-- A **weather tab** with current temp, condition, and today's high/low.
-- No API key — IP geolocation (ipapi.co) + Open-Meteo, with a **sky gradient**
-  that changes with the time of day and conditions.
+- A **weather tab** with current temp, condition, today's high/low, and an
+  **hourly strip** (next 12 hours: time, icon, temp, **rain %**).
+- Open-Meteo (no API key), location fixed to State College, PA, with a **sky
+  gradient** that changes with the time of day and conditions.
+- **Rain-soon alert** toast when precipitation looks likely in the next few hours.
+
+### 📷 Camera mirror
+- A **Mirror tab** with a live front-camera preview for a quick look before calls.
+  Camera runs only while the tab is open. Requires camera permission.
+
+### 🔔 Alerts
+- Toasts for **rain soon**, **low battery**, and **fully charged** — reusing the
+  same notch banner as the Bluetooth toasts.
 
 ### 🔆 HUD replacement
 - Volume and brightness changes show a **sleek HUD in the notch** instead of the

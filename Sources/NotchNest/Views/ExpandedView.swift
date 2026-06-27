@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AVFoundation
 
 struct ExpandedView: View {
     @EnvironmentObject var state: NotchState
@@ -14,6 +15,7 @@ struct ExpandedView: View {
                 case .music: MusicPane()
                 case .calendar: CalendarPane()
                 case .weather: WeatherPane()
+                case .mirror: MirrorPane()
                 case .shelf: ShelfPane()
                 }
             }
@@ -277,6 +279,60 @@ struct ShelfChip: View {
     }
 }
 
+// MARK: - Mirror pane (front camera)
+
+struct MirrorPane: View {
+    @State private var camera = CameraSession()
+    @State private var status = AVCaptureDevice.authorizationStatus(for: .video)
+
+    var body: some View {
+        ZStack {
+            if status == .authorized {
+                CameraPreview(session: camera.session)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+                    )
+            } else if status == .notDetermined {
+                grant("Allow camera to use the mirror") {
+                    AVCaptureDevice.requestAccess(for: .video) { ok in
+                        DispatchQueue.main.async {
+                            status = ok ? .authorized : .denied
+                            if ok { camera.start() }
+                        }
+                    }
+                }
+            } else {
+                grant("Camera access denied — open Settings") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera")!)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            status = AVCaptureDevice.authorizationStatus(for: .video)
+            if status == .authorized { camera.start() }
+        }
+        .onDisappear { camera.stop() }
+    }
+
+    private func grant(_ text: String, action: @escaping () -> Void) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: "camera.fill")
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(.white.opacity(0.5))
+            Button(text, action: action)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 7)
+                .background(.white.opacity(0.15), in: Capsule())
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - Weather pane
 
 struct WeatherPane: View {
@@ -309,7 +365,7 @@ struct WeatherPane: View {
                             .symbolRenderingMode(.multicolor)
                             .font(.system(size: 50))
                             .symbolEffect(.variableColor.iterative, options: .repeating,
-                                          isActive: Self.isPrecip(w.code))
+                                          isActive: WeatherInfo.isPrecip(w.code))
                             .symbolEffect(.pulse, options: .repeating, isActive: w.code == 0)
                             .shadow(color: .black.opacity(0.2), radius: 6)
                             .id(w.code)
@@ -365,13 +421,6 @@ struct WeatherPane: View {
                 .foregroundStyle(hour.precip >= 30 ? Color(red: 0.6, green: 0.85, blue: 1.0) : .white.opacity(0.5))
             }
             .frame(width: 40)
-        }
-    }
-
-    static func isPrecip(_ code: Int) -> Bool {
-        switch code {
-        case 51...67, 71...77, 80...86, 95...99: return true
-        default: return false
         }
     }
 

@@ -112,6 +112,13 @@ enum Snapshot {
         s10.hud = HUDInfo(kind: .brightness, value: 0.75)
         render(s10, size: metrics.hudSize, to: base.appendingPathComponent("10_hud_brightness.png"))
 
+        // 11. Rain alert toast
+        let s11 = NotchState(metrics: metrics)
+        s11.alert = AlertToast(symbol: "cloud.rain.fill", title: "Rain Likely Soon",
+                               subtitle: "Showers expected within a few hours",
+                               tint: Color(red: 0.5, green: 0.8, blue: 1.0))
+        render(s11, size: metrics.toastSize, to: base.appendingPathComponent("11_rain_alert.png"))
+
         // 5. Compact — playing + charging
         let s5 = NotchState(metrics: metrics)
         s5.nowPlaying = s1.nowPlaying

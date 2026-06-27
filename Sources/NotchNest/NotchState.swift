@@ -29,6 +29,13 @@ final class NotchState: ObservableObject {
     // Weather
     @Published var weather: WeatherInfo?
 
+    // Generic alert toast (rain / battery)
+    @Published var alert: AlertToast?
+    private var alertToken = 0
+    private var rainAlerted = false
+    private var lowBatteryWarned = false
+    private var fullNotified = false
+
     // HUD (volume / brightness)
     @Published var hud: HUDInfo?
     private var hudToken = 0
@@ -150,6 +157,34 @@ final class NotchState: ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) { [weak self] in
                 withAnimation(.easeOut(duration: 0.4)) { self?.chargeFlash = false }
             }
+        }
+
+        // Low-battery warning (once, until recharged a bit).
+        if !newValue.isCharging && newValue.level <= 0.20 && !lowBatteryWarned {
+            lowBatteryWarned = true
+            showAlert(AlertToast(symbol: "battery.25", title: "Low Battery",
+                                 subtitle: "\(newValue.percent)% remaining", tint: .red))
+        } else if newValue.level > 0.25 || newValue.isCharging {
+            lowBatteryWarned = false
+        }
+
+        // Fully-charged notification (once per plug-in).
+        if newValue.isPluggedIn && newValue.level >= 0.99 && !fullNotified {
+            fullNotified = true
+            showAlert(AlertToast(symbol: "battery.100.bolt", title: "Fully Charged",
+                                 subtitle: "100%", tint: .green))
+        } else if newValue.level < 0.95 || !newValue.isPluggedIn {
+            fullNotified = false
+        }
+    }
+
+    func showAlert(_ toast: AlertToast) {
+        alertToken += 1
+        let token = alertToken
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { alert = toast }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+            guard let self, self.alertToken == token else { return }
+            withAnimation(.easeInOut(duration: 0.35)) { self.alert = nil }
         }
     }
 
@@ -294,7 +329,23 @@ final class NotchState: ObservableObject {
 
     func refreshWeather() {
         WeatherService.fetch { [weak self] info in
-            if let info { self?.weather = info }
+            guard let self, let info else { return }
+            self.weather = info
+            self.checkRainAlert(info)
+        }
+    }
+
+    /// Alert when it's dry now but rain looks likely in the next few hours.
+    private func checkRainAlert(_ w: WeatherInfo) {
+        let dryNow = !WeatherInfo.isPrecip(w.code)
+        let soon = w.hourly.prefix(3).contains { $0.precip >= 50 || WeatherInfo.isPrecip($0.code) }
+        if dryNow && soon && !rainAlerted {
+            rainAlerted = true
+            showAlert(AlertToast(symbol: "cloud.rain.fill", title: "Rain Likely Soon",
+                                 subtitle: "Showers expected within a few hours",
+                                 tint: Color(red: 0.5, green: 0.8, blue: 1.0)))
+        } else if !soon {
+            rainAlerted = false
         }
     }
 

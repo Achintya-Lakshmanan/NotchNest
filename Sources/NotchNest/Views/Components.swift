@@ -304,6 +304,32 @@ struct BatteryPill: View {
     }
 }
 
+// MARK: - Generic alert toast (rain / battery)
+
+struct AlertCard: View {
+    let toast: AlertToast
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: toast.symbol)
+                .font(.system(size: 30, weight: .medium))
+                .foregroundStyle(toast.tint)
+                .frame(width: 44)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(toast.title)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                Text(toast.subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - Battery cluster (Mac alone; AirPods on hover)
 
 struct BatteryCluster: View {

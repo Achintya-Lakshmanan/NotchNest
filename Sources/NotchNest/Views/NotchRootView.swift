@@ -40,6 +40,12 @@ struct NotchRootView: View {
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
                     .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
+            } else if let alert = state.alert, !state.isExpanded {
+                AlertCard(toast: alert)
+                    .padding(.top, max(6, state.metrics.notchHeight))
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+                    .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
             } else if state.isExpanded {
                 ExpandedView()
                     .environmentObject(state)

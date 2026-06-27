@@ -123,6 +123,14 @@ final class NotchController: NSObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.relayout() }
             .store(in: &cancellables)
+
+        // Generic alert toast.
+        state?.$alert
+            .map { $0 != nil }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.relayout() }
+            .store(in: &cancellables)
     }
 
     private func relayout() {
@@ -133,7 +141,7 @@ final class NotchController: NSObject {
             size = metrics.expandedSize
         } else if state.hud != nil {
             size = metrics.hudSize
-        } else if state.btPopup != nil {
+        } else if state.btPopup != nil || state.alert != nil {
             size = metrics.toastSize
         } else {
             size = metrics.compactSize
