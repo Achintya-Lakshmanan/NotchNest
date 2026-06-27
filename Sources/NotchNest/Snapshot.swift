@@ -89,7 +89,16 @@ enum Snapshot {
         s8.isExpanded = true
         s8.tab = .weather
         s8.weather = WeatherInfo(temp: 72, high: 78, low: 61, unit: "°F",
-                                 code: 1, isDay: true, city: "San Francisco")
+                                 code: 1, isDay: true, city: "San Francisco",
+                                 hourly: [
+                                    HourForecast(id: "0", label: "Now", temp: 72, code: 1, isDay: true, precip: 0),
+                                    HourForecast(id: "1", label: "3 PM", temp: 74, code: 2, isDay: true, precip: 10),
+                                    HourForecast(id: "2", label: "4 PM", temp: 73, code: 61, isDay: true, precip: 55),
+                                    HourForecast(id: "3", label: "5 PM", temp: 70, code: 95, isDay: true, precip: 80),
+                                    HourForecast(id: "4", label: "6 PM", temp: 67, code: 80, isDay: true, precip: 40),
+                                    HourForecast(id: "5", label: "7 PM", temp: 64, code: 3, isDay: false, precip: 20),
+                                    HourForecast(id: "6", label: "8 PM", temp: 62, code: 0, isDay: false, precip: 0),
+                                 ])
         s8.battery = BatteryInfo(level: 0.8, isCharging: false, isPluggedIn: false, hasBattery: true)
         render(s8, size: metrics.expandedSize, to: base.appendingPathComponent("8_weather.png"))
 

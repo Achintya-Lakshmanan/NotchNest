@@ -288,38 +288,46 @@ struct WeatherPane: View {
                 LinearGradient(colors: Self.sky(w), startPoint: .top, endPoint: .bottom)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(w.city)
-                            .font(.system(size: 13, weight: .semibold))
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(w.city)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.9))
+                                .lineLimit(1)
+                            Text("\(w.temp)\(w.unit)")
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundStyle(.white)
+                            HStack(spacing: 10) {
+                                Text(w.summary).font(.system(size: 13, weight: .medium))
+                                Text("H:\(w.high)°  L:\(w.low)°").font(.system(size: 12, weight: .medium)).opacity(0.85)
+                            }
                             .foregroundStyle(.white.opacity(0.9))
-                            .lineLimit(1)
-                        Text("\(w.temp)\(w.unit)")
-                            .font(.system(size: 46, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(w.summary)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.9))
-                        HStack(spacing: 10) {
-                            Label("\(w.high)°", systemImage: "arrow.up")
-                            Label("\(w.low)°", systemImage: "arrow.down")
                         }
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.8))
-                        .padding(.top, 2)
+                        Spacer()
+                        Image(systemName: w.symbol)
+                            .symbolRenderingMode(.multicolor)
+                            .font(.system(size: 50))
+                            .symbolEffect(.variableColor.iterative, options: .repeating,
+                                          isActive: Self.isPrecip(w.code))
+                            .symbolEffect(.pulse, options: .repeating, isActive: w.code == 0)
+                            .shadow(color: .black.opacity(0.2), radius: 6)
+                            .id(w.code)
                     }
-                    Spacer()
-                    Image(systemName: w.symbol)
-                        .symbolRenderingMode(.multicolor)
-                        .font(.system(size: 60))
-                        .symbolEffect(.variableColor.iterative, options: .repeating,
-                                      isActive: Self.isPrecip(w.code))
-                        .symbolEffect(.pulse, options: .repeating,
-                                      isActive: w.code == 0)
-                        .shadow(color: .black.opacity(0.2), radius: 6)
-                        .id(w.code)   // re-evaluate effects when condition changes
+
+                    if !w.hourly.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 14) {
+                                ForEach(w.hourly) { HourCell(hour: $0) }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .background(.white.opacity(0.08),
+                                   in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Spacer(minLength: 0)
                 }
-                .padding(20)
+                .padding(16)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "cloud.sun.fill")
@@ -334,6 +342,30 @@ struct WeatherPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { if state.weather == nil { state.refreshWeather() } }
+    }
+
+    struct HourCell: View {
+        let hour: HourForecast
+        var body: some View {
+            VStack(spacing: 3) {
+                Text(hour.label)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
+                Image(systemName: WeatherInfo.symbol(code: hour.code, isDay: hour.isDay))
+                    .symbolRenderingMode(.multicolor)
+                    .font(.system(size: 15))
+                    .frame(height: 18)
+                Text("\(hour.temp)°")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                HStack(spacing: 1) {
+                    Image(systemName: "drop.fill").font(.system(size: 7))
+                    Text("\(hour.precip)%").font(.system(size: 9, weight: .medium))
+                }
+                .foregroundStyle(hour.precip >= 30 ? Color(red: 0.6, green: 0.85, blue: 1.0) : .white.opacity(0.5))
+            }
+            .frame(width: 40)
+        }
     }
 
     static func isPrecip(_ code: Int) -> Bool {

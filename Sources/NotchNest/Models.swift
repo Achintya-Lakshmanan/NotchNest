@@ -106,6 +106,15 @@ enum NotchTab: String, CaseIterable {
 
 // MARK: - Weather
 
+struct HourForecast: Identifiable, Equatable {
+    var id: String          // ISO time string
+    var label: String       // "Now", "2 PM", …
+    var temp: Int
+    var code: Int
+    var isDay: Bool
+    var precip: Int         // precipitation probability %
+}
+
 struct WeatherInfo: Equatable {
     var temp: Int
     var high: Int
@@ -114,8 +123,11 @@ struct WeatherInfo: Equatable {
     var code: Int           // WMO weather code
     var isDay: Bool
     var city: String
+    var hourly: [HourForecast] = []
 
-    var symbol: String {
+    var symbol: String { WeatherInfo.symbol(code: code, isDay: isDay) }
+
+    static func symbol(code: Int, isDay: Bool) -> String {
         switch code {
         case 0:           return isDay ? "sun.max.fill" : "moon.stars.fill"
         case 1, 2:        return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
