@@ -52,24 +52,60 @@ enum AudioOutput {
 
     static func volume() -> Float? {
         guard let dev = currentDefault() else { return nil }
-        var addr = AudioObjectPropertyAddress(
-            mSelector: kAudioDevicePropertyVolumeScalar,
-            mScope: kAudioObjectPropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain)
-        var value: Float32 = 0
-        var size = UInt32(MemoryLayout<Float32>.size)
-        guard AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &value) == noErr else { return nil }
-        return value
+        // Master element first; fall back to averaging the stereo channels
+        // (most built-in speakers / AirPods only expose per-channel volume).
+        for element in [kAudioObjectPropertyElementMain] + stereoChannels(dev) {
+            var addr = volumeAddress(element)
+            guard AudioObjectHasProperty(dev, &addr) else { continue }
+            var value: Float32 = 0
+            var size = UInt32(MemoryLayout<Float32>.size)
+            if AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, &value) == noErr {
+                return value
+            }
+        }
+        return nil
     }
 
     static func setVolume(_ value: Float) {
         guard let dev = currentDefault() else { return }
-        var addr = AudioObjectPropertyAddress(
+        var v = Float32(min(max(value, 0), 1))
+
+        var master = volumeAddress(kAudioObjectPropertyElementMain)
+        if AudioObjectHasProperty(dev, &master), isSettable(dev, &master) {
+            AudioObjectSetPropertyData(dev, &master, 0, nil, UInt32(MemoryLayout<Float32>.size), &v)
+            return
+        }
+        for ch in stereoChannels(dev) {
+            var addr = volumeAddress(ch)
+            if AudioObjectHasProperty(dev, &addr), isSettable(dev, &addr) {
+                AudioObjectSetPropertyData(dev, &addr, 0, nil, UInt32(MemoryLayout<Float32>.size), &v)
+            }
+        }
+    }
+
+    private static func volumeAddress(_ element: AudioObjectPropertyElement) -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyVolumeScalar,
             mScope: kAudioObjectPropertyScopeOutput,
+            mElement: element)
+    }
+
+    private static func isSettable(_ dev: AudioDeviceID, _ addr: inout AudioObjectPropertyAddress) -> Bool {
+        var settable = DarwinBoolean(false)
+        return AudioObjectIsPropertySettable(dev, &addr, &settable) == noErr && settable.boolValue
+    }
+
+    private static func stereoChannels(_ dev: AudioDeviceID) -> [AudioObjectPropertyElement] {
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyPreferredChannelsForStereo,
+            mScope: kAudioObjectPropertyScopeOutput,
             mElement: kAudioObjectPropertyElementMain)
-        var v = Float32(min(max(value, 0), 1))
-        AudioObjectSetPropertyData(dev, &addr, 0, nil, UInt32(MemoryLayout<Float32>.size), &v)
+        var channels: [UInt32] = [1, 2]
+        var size = UInt32(MemoryLayout<UInt32>.size * 2)
+        let status = channels.withUnsafeMutableBytes { raw in
+            AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, raw.baseAddress!)
+        }
+        return status == noErr ? channels : [1, 2]
     }
 
     static func isMuted() -> Bool {

@@ -312,7 +312,12 @@ struct WeatherPane: View {
                     Image(systemName: w.symbol)
                         .symbolRenderingMode(.multicolor)
                         .font(.system(size: 60))
+                        .symbolEffect(.variableColor.iterative, options: .repeating,
+                                      isActive: Self.isPrecip(w.code))
+                        .symbolEffect(.pulse, options: .repeating,
+                                      isActive: w.code == 0)
                         .shadow(color: .black.opacity(0.2), radius: 6)
+                        .id(w.code)   // re-evaluate effects when condition changes
                 }
                 .padding(20)
             } else {
@@ -329,6 +334,13 @@ struct WeatherPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { if state.weather == nil { state.refreshWeather() } }
+    }
+
+    static func isPrecip(_ code: Int) -> Bool {
+        switch code {
+        case 51...67, 71...77, 80...86, 95...99: return true
+        default: return false
+        }
     }
 
     /// Sky gradient based on time of day + condition.
