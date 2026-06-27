@@ -1,0 +1,10 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Package.resolved
+
+# Build output
+NotchNest.app/
+
+# macOS
+.DS_Store
