@@ -348,6 +348,42 @@ struct BatteryCluster: View {
     }
 }
 
+// MARK: - Volume / brightness HUD
+
+struct HUDView: View {
+    let hud: HUDInfo
+
+    private var barColor: Color {
+        switch hud.kind {
+        case .brightness: return .yellow
+        case .muted: return .gray
+        case .keyboard: return .cyan
+        default: return .white
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: hud.symbol)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 24)
+                .contentTransition(.symbolEffect(.replace))
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.18))
+                    Capsule().fill(barColor)
+                        .frame(width: max(5, geo.size.width * hud.value))
+                }
+            }
+            .frame(height: 6)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 18)
+    }
+}
+
 // MARK: - Meeting countdown pill (collapsed notch)
 
 struct MeetingPill: View {

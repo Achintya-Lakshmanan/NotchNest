@@ -13,6 +13,7 @@ struct ExpandedView: View {
                 switch state.tab {
                 case .music: MusicPane()
                 case .calendar: CalendarPane()
+                case .weather: WeatherPane()
                 case .shelf: ShelfPane()
                 }
             }
@@ -273,6 +274,82 @@ struct ShelfChip: View {
         }
         .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovering = h } }
         .onDrag { NSItemProvider(contentsOf: item.url) ?? NSItemProvider() }
+    }
+}
+
+// MARK: - Weather pane
+
+struct WeatherPane: View {
+    @EnvironmentObject var state: NotchState
+
+    var body: some View {
+        ZStack {
+            if let w = state.weather {
+                LinearGradient(colors: Self.sky(w), startPoint: .top, endPoint: .bottom)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(w.city)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .lineLimit(1)
+                        Text("\(w.temp)\(w.unit)")
+                            .font(.system(size: 46, weight: .bold))
+                            .foregroundStyle(.white)
+                        Text(w.summary)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
+                        HStack(spacing: 10) {
+                            Label("\(w.high)°", systemImage: "arrow.up")
+                            Label("\(w.low)°", systemImage: "arrow.down")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.top, 2)
+                    }
+                    Spacer()
+                    Image(systemName: w.symbol)
+                        .symbolRenderingMode(.multicolor)
+                        .font(.system(size: 60))
+                        .shadow(color: .black.opacity(0.2), radius: 6)
+                }
+                .padding(20)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "cloud.sun.fill")
+                        .symbolRenderingMode(.multicolor)
+                        .font(.system(size: 26))
+                    Text("Loading weather…")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear { if state.weather == nil { state.refreshWeather() } }
+    }
+
+    /// Sky gradient based on time of day + condition.
+    static func sky(_ w: WeatherInfo) -> [Color] {
+        if !w.isDay {
+            return [Color(red: 0.06, green: 0.08, blue: 0.22), Color(red: 0.12, green: 0.14, blue: 0.30)]
+        }
+        switch w.code {
+        case 0, 1:
+            return [Color(red: 0.16, green: 0.52, blue: 0.93), Color(red: 0.45, green: 0.78, blue: 0.98)]
+        case 2, 3, 45, 48:
+            return [Color(red: 0.40, green: 0.50, blue: 0.62), Color(red: 0.58, green: 0.67, blue: 0.77)]
+        case 51...67, 80...82:
+            return [Color(red: 0.26, green: 0.34, blue: 0.45), Color(red: 0.40, green: 0.49, blue: 0.60)]
+        case 71...77, 85, 86:
+            return [Color(red: 0.55, green: 0.62, blue: 0.73), Color(red: 0.78, green: 0.83, blue: 0.90)]
+        case 95...99:
+            return [Color(red: 0.18, green: 0.16, blue: 0.32), Color(red: 0.34, green: 0.30, blue: 0.48)]
+        default:
+            return [Color(red: 0.20, green: 0.45, blue: 0.80), Color(red: 0.45, green: 0.70, blue: 0.95)]
+        }
     }
 }
 

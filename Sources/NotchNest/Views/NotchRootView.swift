@@ -29,7 +29,12 @@ struct NotchRootView: View {
                 .shadow(color: state.chargeFlash ? .green.opacity(0.45) : .clear,
                        radius: state.chargeFlash ? 14 : 0)
 
-            if let toast = state.btPopup, !state.isExpanded {
+            if let hud = state.hud, !state.isExpanded {
+                HUDView(hud: hud)
+                    .padding(.top, max(4, state.metrics.notchHeight))
+                    .padding(.bottom, 8)
+                    .transition(.opacity)
+            } else if let toast = state.btPopup, !state.isExpanded {
                 BTPopupCard(toast: toast, mac: state.battery)
                     .padding(.top, max(6, state.metrics.notchHeight))
                     .padding(.horizontal, 14)

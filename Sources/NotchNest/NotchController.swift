@@ -12,6 +12,7 @@ final class NotchController: NSObject {
     private var mediaTimer: Timer?
     private var batteryTimer: Timer?
     private var collapseWork: DispatchWorkItem?
+    private let hudController = HUDController()
 
     // Verification helper: render the expanded card centered & floating so it's
     // visible to screenshot tooling. Not used in normal operation.
@@ -52,10 +53,17 @@ final class NotchController: NSObject {
             MainActor.assumeIsolated { self?.openPreferences() }
         }
 
+        // HUD key tap (volume/brightness). Needs Accessibility permission.
+        hudController.onEvent = { [weak self] kind, value in
+            MainActor.assumeIsolated { self?.state?.showHUD(kind, value: value) }
+        }
+        startHUD(prompt: true, attemptsLeft: 40)
+
         // First fill.
         state.refreshNowPlaying()
         state.battery = BatteryMonitor.current()
         state.refreshCalendar()
+        state.refreshWeather()
     }
 
     // MARK: Expansion
@@ -107,6 +115,14 @@ final class NotchController: NSObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.relayout() }
             .store(in: &cancellables)
+
+        // HUD resizes to a compact pill.
+        state?.$hud
+            .map { $0 != nil }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.relayout() }
+            .store(in: &cancellables)
     }
 
     private func relayout() {
@@ -115,6 +131,8 @@ final class NotchController: NSObject {
         let size: CGSize
         if state.isExpanded {
             size = metrics.expandedSize
+        } else if state.hud != nil {
+            size = metrics.hudSize
         } else if state.btPopup != nil {
             size = metrics.toastSize
         } else {
@@ -146,6 +164,10 @@ final class NotchController: NSObject {
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.state?.refreshCalendar() }
         }
+        // Weather every 15 minutes.
+        Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.state?.refreshWeather() }
+        }
         // Bluetooth: poll for connected devices / battery.
         BluetoothMonitor.connectedDevices { [weak self] devices in
             self?.state?.updateBluetooth(devices)
@@ -172,6 +194,16 @@ final class NotchController: NSObject {
         menu.addItem(NSMenuItem(title: "Quit NotchNest", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
         statusItem = item
+    }
+
+    /// Try to install the HUD key tap; retries until Accessibility is granted
+    /// so the user doesn't have to relaunch after enabling it.
+    private func startHUD(prompt: Bool, attemptsLeft: Int) {
+        if hudController.start(promptForAccess: prompt) { return }
+        guard attemptsLeft > 0 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            self?.startHUD(prompt: false, attemptsLeft: attemptsLeft - 1)
+        }
     }
 
     @objc private func openPreferences() {

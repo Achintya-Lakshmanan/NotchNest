@@ -24,6 +24,11 @@ struct NotchMetrics {
     var toastSize: CGSize {
         CGSize(width: 380, height: 64 + notchHeight)
     }
+
+    /// Compact pill for volume/brightness HUDs.
+    var hudSize: CGSize {
+        CGSize(width: max(notchWidth + 2 * 70, 260), height: 38 + notchHeight)
+    }
 }
 
 // MARK: - Now Playing
@@ -86,13 +91,83 @@ struct ShelfItem: Identifiable, Equatable {
 enum NotchTab: String, CaseIterable {
     case music = "Music"
     case calendar = "Calendar"
+    case weather = "Weather"
     case shelf = "Shelf"
 
     var symbol: String {
         switch self {
         case .music: return "music.note"
         case .calendar: return "calendar"
+        case .weather: return "cloud.sun.fill"
         case .shelf: return "tray.full"
+        }
+    }
+}
+
+// MARK: - Weather
+
+struct WeatherInfo: Equatable {
+    var temp: Int
+    var high: Int
+    var low: Int
+    var unit: String        // "°F" / "°C"
+    var code: Int           // WMO weather code
+    var isDay: Bool
+    var city: String
+
+    var symbol: String {
+        switch code {
+        case 0:           return isDay ? "sun.max.fill" : "moon.stars.fill"
+        case 1, 2:        return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
+        case 3:           return "cloud.fill"
+        case 45, 48:      return "cloud.fog.fill"
+        case 51, 53, 55, 56, 57: return "cloud.drizzle.fill"
+        case 61, 63, 65, 66, 67: return "cloud.rain.fill"
+        case 71, 73, 75, 77:     return "snowflake"
+        case 80, 81, 82:  return "cloud.heavyrain.fill"
+        case 85, 86:      return "cloud.snow.fill"
+        case 95, 96, 99:  return "cloud.bolt.rain.fill"
+        default:          return "cloud.fill"
+        }
+    }
+
+    var summary: String {
+        switch code {
+        case 0:           return "Clear"
+        case 1, 2:        return "Partly Cloudy"
+        case 3:           return "Cloudy"
+        case 45, 48:      return "Foggy"
+        case 51, 53, 55:  return "Drizzle"
+        case 56, 57:      return "Freezing Drizzle"
+        case 61, 63, 65:  return "Rain"
+        case 66, 67:      return "Freezing Rain"
+        case 71, 73, 75, 77: return "Snow"
+        case 80, 81, 82:  return "Showers"
+        case 85, 86:      return "Snow Showers"
+        case 95:          return "Thunderstorm"
+        case 96, 99:      return "Thunderstorm"
+        default:          return "—"
+        }
+    }
+}
+
+// MARK: - HUD (volume / brightness)
+
+struct HUDInfo: Equatable {
+    enum Kind: Equatable { case volume, muted, brightness, keyboard }
+    var kind: Kind
+    var value: Double   // 0...1
+
+    var symbol: String {
+        switch kind {
+        case .muted: return "speaker.slash.fill"
+        case .volume:
+            if value <= 0 { return "speaker.fill" }
+            if value < 0.34 { return "speaker.wave.1.fill" }
+            if value < 0.67 { return "speaker.wave.2.fill" }
+            return "speaker.wave.3.fill"
+        case .brightness: return "sun.max.fill"
+        case .keyboard: return "keyboard"
         }
     }
 }

@@ -28,6 +28,17 @@ Built & tested on an M3 MacBook Pro, macOS Tahoe (26/27), Swift 6.4 / Xcode 27.
 - **Drag files onto the notch** to stash them; drag them back out anywhere.
 - Per-item **AirDrop** button and an **AirDrop all** action (system AirDrop sheet).
 
+### 🌤️ Weather
+- A **weather tab** with current temp, condition, and today's high/low.
+- No API key — IP geolocation (ipapi.co) + Open-Meteo, with a **sky gradient**
+  that changes with the time of day and conditions.
+
+### 🔆 HUD replacement
+- Volume and brightness changes show a **sleek HUD in the notch** instead of the
+  default macOS overlay (intercepts the media keys, applies the change, and
+  suppresses the system HUD).
+- Requires **Accessibility** permission (prompted on launch).
+
 ### 🔋 Battery & 🎧 Bluetooth
 - Collapsed pill stays clean: just an **animated charging bolt** when plugged in.
 - **Laptop + AirPods battery** shown when expanded (hover).
@@ -58,8 +69,10 @@ open NotchNest.app          # or move NotchNest.app to /Applications
 - **Automation** (System Settings ▸ Privacy & Security ▸ Automation) — to read
   now-playing info and control Music / Spotify. Prompted on first use.
 - **Calendar** — to show your events. Prompted from the Calendar tab.
-- Battery (IOKit), Bluetooth (`system_profiler`), and audio output (CoreAudio)
-  need no special permission.
+- **Accessibility** — for the volume/brightness HUD key tap. Prompted on launch;
+  the tap auto-activates once granted (no relaunch needed).
+- Battery (IOKit), Bluetooth (`system_profiler`), audio output (CoreAudio), and
+  weather (network) need no special permission.
 
 ## Architecture
 
@@ -79,6 +92,9 @@ open NotchNest.app          # or move NotchNest.app to /Applications
   - `ColorExtractor.swift` — vibrant color from album art (CoreImage).
   - `AirDropService.swift` — `NSSharingService` AirDrop.
   - `LoginItem.swift` — `SMAppService` launch at login.
+  - `WeatherService.swift` — IP geolocation + Open-Meteo (no API key).
+  - `HUDController.swift` — media-key event tap (volume/brightness HUD).
+  - `BrightnessControl.swift` — display brightness via private DisplayServices.
 - `Views/` — `NotchShape` (geometry), `CompactView`, `ExpandedView` (music /
   calendar / shelf panes), `Components` (equalizer, batteries, meeting pill,
   toast card, output menu, buttons), `NotchRootView`, `SettingsView`.

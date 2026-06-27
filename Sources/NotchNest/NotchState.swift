@@ -26,6 +26,13 @@ final class NotchState: ObservableObject {
     @Published var btDevices: [BTDevice] = []
     @Published var btPopup: BTToast?
 
+    // Weather
+    @Published var weather: WeatherInfo?
+
+    // HUD (volume / brightness)
+    @Published var hud: HUDInfo?
+    private var hudToken = 0
+
     let metrics: NotchMetrics
     let media = MediaController()
     let calendar = CalendarService()
@@ -281,5 +288,29 @@ final class NotchState: ObservableObject {
 
     func airDrop(_ urls: [URL]) {
         AirDropService.send(urls)
+    }
+
+    // MARK: Weather
+
+    func refreshWeather() {
+        WeatherService.fetch { [weak self] info in
+            if let info { self?.weather = info }
+        }
+    }
+
+    // MARK: HUD
+
+    /// Show a transient volume/brightness HUD in the notch.
+    func showHUD(_ kind: HUDInfo.Kind, value: Double) {
+        hudToken += 1
+        let token = hudToken
+        let info = HUDInfo(kind: kind, value: min(max(value, 0), 1))
+        if hud != info {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { hud = info }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { [weak self] in
+            guard let self, self.hudToken == token else { return }
+            withAnimation(.easeOut(duration: 0.3)) { self.hud = nil }
+        }
     }
 }

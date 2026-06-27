@@ -84,6 +84,25 @@ enum Snapshot {
         s7.battery = BatteryInfo(level: 0.62, isCharging: false, isPluggedIn: false, hasBattery: true)
         render(s7, size: metrics.toastSize, to: base.appendingPathComponent("7_bt_low.png"))
 
+        // 8. Weather
+        let s8 = NotchState(metrics: metrics)
+        s8.isExpanded = true
+        s8.tab = .weather
+        s8.weather = WeatherInfo(temp: 72, high: 78, low: 61, unit: "°F",
+                                 code: 1, isDay: true, city: "San Francisco")
+        s8.battery = BatteryInfo(level: 0.8, isCharging: false, isPluggedIn: false, hasBattery: true)
+        render(s8, size: metrics.expandedSize, to: base.appendingPathComponent("8_weather.png"))
+
+        // 9. Volume HUD
+        let s9 = NotchState(metrics: metrics)
+        s9.hud = HUDInfo(kind: .volume, value: 0.6)
+        render(s9, size: metrics.hudSize, to: base.appendingPathComponent("9_hud_volume.png"))
+
+        // 10. Brightness HUD
+        let s10 = NotchState(metrics: metrics)
+        s10.hud = HUDInfo(kind: .brightness, value: 0.75)
+        render(s10, size: metrics.hudSize, to: base.appendingPathComponent("10_hud_brightness.png"))
+
         // 5. Compact — playing + charging
         let s5 = NotchState(metrics: metrics)
         s5.nowPlaying = s1.nowPlaying
