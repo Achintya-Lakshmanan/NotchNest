@@ -80,6 +80,7 @@ struct ArtworkView: View {
 
 struct BatteryView: View {
     var battery: BatteryInfo
+    var showPercent: Bool = true
 
     private var fillColor: Color {
         if battery.isCharging || battery.isPluggedIn { return .green }
@@ -90,10 +91,12 @@ struct BatteryView: View {
 
     var body: some View {
         HStack(spacing: 5) {
-            Text("\(battery.percent)%")
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.9))
-                .monospacedDigit()
+            if showPercent {
+                Text("\(battery.percent)%")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .monospacedDigit()
+            }
 
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 3, style: .continuous)
@@ -186,6 +189,31 @@ struct CompactBattery: View {
             }
         }
         .foregroundStyle(.white.opacity(0.9))
+    }
+}
+
+/// Compact charging readout for the collapsed pill: bolt + % only (single line).
+struct CompactChargingDisplay: View {
+    var battery: BatteryInfo
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let pulse = (sin(t * 3) + 1) / 2
+            HStack(spacing: 2) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(.green)
+                    .shadow(color: .green.opacity(0.4 + 0.6 * pulse), radius: 2)
+                    .scaleEffect(0.9 + 0.12 * pulse)
+                Text("\(battery.percent)%")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .lineLimit(1)
+            }
+            .fixedSize()
+        }
     }
 }
 
@@ -334,6 +362,7 @@ struct AlertCard: View {
 
 struct BatteryCluster: View {
     @EnvironmentObject var state: NotchState
+    @ObservedObject private var settings = Settings.shared
 
     private var btDevice: BTDevice? {
         state.btDevices.first(where: { $0.hasAnyBattery })
@@ -362,14 +391,40 @@ struct BatteryCluster: View {
     @ViewBuilder private var macBattery: some View {
         if state.battery.isCharging {
             HStack(spacing: 5) {
-                Text("\(state.battery.percent)%")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.green)
-                    .monospacedDigit()
+                if settings.batteryPercentInExpanded {
+                    chargingLabel
+                } else if let mins = state.battery.minutesTo80 {
+                    Text("\(mins)m → 80%")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
+                }
                 AnimatedChargingBattery(level: state.battery.level)
             }
         } else if state.battery.hasBattery {
-            BatteryView(battery: state.battery)
+            BatteryView(battery: state.battery, showPercent: settings.batteryPercentInExpanded)
+        }
+    }
+
+    @ViewBuilder private var chargingLabel: some View {
+        let percent = Text("\(state.battery.percent)%")
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .foregroundStyle(.green)
+            .monospacedDigit()
+
+        if let mins = state.battery.minutesTo80 {
+            (percent + Text(" · \(mins)m → 80%")
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.4))
+                .monospacedDigit())
+                .lineLimit(1)
+                .fixedSize()
+        } else {
+            percent
+                .lineLimit(1)
+                .fixedSize()
         }
     }
 }

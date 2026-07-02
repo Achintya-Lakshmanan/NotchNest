@@ -29,6 +29,33 @@ struct SettingsView: View {
 
             Divider()
 
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Battery").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                Toggle("Show percentage in closed notch while charging", isOn: $settings.batteryPercentInCompact)
+                Toggle("Show percentage in expanded view", isOn: $settings.batteryPercentInExpanded)
+                Toggle("Hide closed-notch percentage during quiet hours", isOn: $settings.batteryCompactSchedule)
+                if settings.batteryCompactSchedule {
+                    HStack(spacing: 12) {
+                        Text("From").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Picker("", selection: $settings.batteryQuietStartHour) {
+                            ForEach(0..<24, id: \.self) { hour in
+                                Text(Settings.hourLabel(hour)).tag(hour)
+                            }
+                        }
+                        .labelsHidden()
+                        Text("to").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Picker("", selection: $settings.batteryQuietEndHour) {
+                            ForEach(0..<24, id: \.self) { hour in
+                                Text(Settings.hourLabel(hour)).tag(hour)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+                }
+            }
+
+            Divider()
+
             HStack {
                 Text("NotchNest 1.0").font(.system(size: 11)).foregroundStyle(.tertiary)
                 Spacer()

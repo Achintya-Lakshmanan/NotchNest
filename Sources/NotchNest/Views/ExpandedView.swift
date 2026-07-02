@@ -730,7 +730,10 @@ struct CalendarRow: View {
                      : "\(Self.timeFmt.string(from: event.start)) – \(Self.timeFmt.string(from: event.end))")
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(1)
             }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(-1)
             Spacer(minLength: 0)
             if event.isNow {
                 Text("NOW")
@@ -738,16 +741,22 @@ struct CalendarRow: View {
                     .foregroundStyle(.black)
                     .padding(.horizontal, 5).padding(.vertical, 2)
                     .background(.green, in: Capsule())
+                    .lineLimit(1)
+                    .fixedSize()
+                    .layoutPriority(1)
             }
             if let onJoin {
                 Button(action: onJoin) {
                     Label("Join", systemImage: "video.fill")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .fixedSize()
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(.green.opacity(0.9), in: Capsule())
                 }
                 .buttonStyle(.plain)
+                .layoutPriority(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

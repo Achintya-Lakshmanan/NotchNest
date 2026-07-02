@@ -46,12 +46,18 @@ struct CompactView: View {
             Spacer(minLength: metrics.notchWidth - 16)
 
             // Right widget — charging bolt animation, else equalizer when playing.
-            // (Laptop charge % only appears on hover / expanded.)
             HStack {
                 Spacer(minLength: 0)
                 if state.battery.isCharging {
-                    ChargingBadge(battery: state.battery, showPercent: false)
-                        .transition(.scale.combined(with: .opacity))
+                    TimelineView(.periodic(from: .now, by: 60)) { _ in
+                        if settings.isBatteryPercentVisibleInCompact() {
+                            CompactChargingDisplay(battery: state.battery)
+                                .transition(.scale.combined(with: .opacity))
+                        } else {
+                            ChargingBadge(battery: state.battery, showPercent: false)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
                 } else if let np = state.nowPlaying {
                     EqualizerView(playing: np.isPlaying, color: .white)
                         .transition(.scale.combined(with: .opacity))

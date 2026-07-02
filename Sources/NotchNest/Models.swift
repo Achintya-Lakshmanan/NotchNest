@@ -71,8 +71,19 @@ struct BatteryInfo: Equatable {
     var isCharging: Bool = false
     var isPluggedIn: Bool = false
     var hasBattery: Bool = true
+    /// Minutes until 100% from IOKit; -1 when unknown/calculating.
+    var timeToFullChargeMinutes: Int?
 
     var percent: Int { Int((level * 100).rounded()) }
+
+    /// Estimated minutes until 80% while charging; nil when already ≥80% or unknown.
+    var minutesTo80: Int? {
+        guard isCharging, level < 0.80 else { return nil }
+        guard let timeToFull = timeToFullChargeMinutes, timeToFull >= 0 else { return nil }
+        guard level < 1.0 else { return nil }
+        let remaining = Double(timeToFull) * (0.80 - level) / (1.0 - level)
+        return max(1, Int(remaining.rounded()))
+    }
 }
 
 // MARK: - Shelf

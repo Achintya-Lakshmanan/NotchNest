@@ -97,6 +97,11 @@ final class NotchController: NSObject {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.72)) {
             state.isExpanded = expanded
         }
+        // Let NotchBar (the menu bar manager) tuck items away while we're open.
+        DistributedNotificationCenter.default().postNotificationName(
+            Notification.Name(expanded ? "com.notchbar.notchnest.expanded"
+                                       : "com.notchbar.notchnest.collapsed"),
+            object: nil, userInfo: nil, deliverImmediately: true)
     }
 
     private func observeExpansion() {
