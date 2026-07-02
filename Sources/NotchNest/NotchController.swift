@@ -13,6 +13,7 @@ final class NotchController: NSObject {
     private var batteryTimer: Timer?
     private var collapseWork: DispatchWorkItem?
     private let hudController = HUDController()
+    private var bluetoothEventMonitor: BluetoothEventMonitor?
 
     // Verification helper: render the expanded card centered & floating so it's
     // visible to screenshot tooling. Not used in normal operation.
@@ -164,6 +165,15 @@ final class NotchController: NSObject {
         }
     }
 
+    private func pollBluetooth() {
+        BluetoothMonitor.connectedDevices { [weak self] devices in
+            Task { @MainActor in
+                let connected = self?.bluetoothEventMonitor?.connectedAddresses ?? []
+                self?.state?.updateBluetooth(devices, eventConnected: connected)
+            }
+        }
+    }
+
     // MARK: Timers
 
     private func setupTimers() {
@@ -181,14 +191,21 @@ final class NotchController: NSObject {
         Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.state?.refreshWeather() }
         }
-        // Bluetooth: poll for connected devices / battery.
-        BluetoothMonitor.connectedDevices { [weak self] devices in
-            self?.state?.updateBluetooth(devices)
-        }
-        Timer.scheduledTimer(withTimeInterval: 6, repeats: true) { [weak self] _ in
-            BluetoothMonitor.connectedDevices { devices in
-                Task { @MainActor in self?.state?.updateBluetooth(devices) }
+        // Bluetooth: IOBluetooth for connect/disconnect toasts; system_profiler for battery/UI list.
+        let btEvents = BluetoothEventMonitor()
+        bluetoothEventMonitor = btEvents
+        btEvents.start { [weak self] name, address, connected in
+            MainActor.assumeIsolated {
+                if connected {
+                    self?.state?.bluetoothDidConnect(name: name, address: address)
+                } else {
+                    self?.state?.bluetoothDidDisconnect(name: name, address: address)
+                }
             }
+        }
+        pollBluetooth()
+        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pollBluetooth() }
         }
     }
 

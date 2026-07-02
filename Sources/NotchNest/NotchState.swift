@@ -56,7 +56,6 @@ final class NotchState: ObservableObject {
     let calendar = CalendarService()
 
     private var artworkURLLoaded: String?
-    private var knownConnected: Set<String> = []
     private var lastDevices: [String: BTDevice] = [:]
     private var lowWarned: Set<String> = []
     private var btPopupToken = 0
@@ -336,26 +335,22 @@ final class NotchState: ObservableObject {
 
     // MARK: Bluetooth
 
-    func updateBluetooth(_ devices: [BTDevice]) {
-        btDevices = devices
-        let nowConnected = Set(devices.map(\.address))
-        for d in devices { lastDevices[d.address] = d }
-
-        let newly = nowConnected.subtracting(knownConnected)
-        let gone = knownConnected.subtracting(nowConnected)
-
-        // Skip toasts on the very first poll (devices already connected at launch).
-        if !knownConnected.isEmpty {
-            if let addr = newly.first, let device = devices.first(where: { $0.address == addr }) {
-                showToast(BTToast(device: device, kind: .connected))
-            } else if let addr = gone.first, let device = lastDevices[addr] {
-                lowWarned.remove(addr)
-                showToast(BTToast(device: device, kind: .disconnected))
-            }
+    /// Updates device list and battery from `system_profiler` polling (not connect/disconnect toasts).
+    func updateBluetooth(_ devices: [BTDevice], eventConnected: Set<String>) {
+        let effective: [BTDevice]
+        if devices.isEmpty && !eventConnected.isEmpty {
+            // Failed/stale poll — keep previous list to avoid UI flicker and phantom events.
+            effective = btDevices
+        } else {
+            effective = devices
         }
 
-        // Low-battery warning for connected devices (once per drop below threshold).
-        for d in devices {
+        btDevices = effective
+        for d in effective { lastDevices[d.address] = d }
+        // Merge polled battery info for event-connected addresses even when we kept the old list.
+        for d in devices { lastDevices[d.address] = d }
+
+        for d in effective {
             guard let pct = d.primaryBattery else { continue }
             if pct <= 20 && !lowWarned.contains(d.address) {
                 lowWarned.insert(d.address)
@@ -364,8 +359,23 @@ final class NotchState: ObservableObject {
                 lowWarned.remove(d.address)
             }
         }
+    }
 
-        knownConnected = nowConnected
+    func bluetoothDidConnect(name: String, address: String) {
+        let device = lastDevices[address] ?? BTDevice(
+            address: address, name: name,
+            batteryMain: nil, batteryLeft: nil, batteryRight: nil, batteryCase: nil, minorType: nil
+        )
+        showToast(BTToast(device: device, kind: .connected))
+    }
+
+    func bluetoothDidDisconnect(name: String, address: String) {
+        let device = lastDevices[address] ?? BTDevice(
+            address: address, name: name,
+            batteryMain: nil, batteryLeft: nil, batteryRight: nil, batteryCase: nil, minorType: nil
+        )
+        lowWarned.remove(address)
+        showToast(BTToast(device: device, kind: .disconnected))
     }
 
     private func showToast(_ toast: BTToast) {

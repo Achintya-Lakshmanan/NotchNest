@@ -30,5 +30,7 @@
     <string>NotchNest shows your events for today in the notch.</string>
     <key>NSCameraUsageDescription</key>
     <string>NotchNest shows a front-camera mirror in the notch.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>NotchNest detects when Bluetooth devices connect and disconnect.</string>
 </dict>
 </plist>
