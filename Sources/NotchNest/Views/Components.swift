@@ -167,28 +167,34 @@ struct AnimatedChargingBattery: View {
 struct CompactBattery: View {
     var battery: BatteryInfo
 
-    private var fill: Color {
+    private var tint: Color {
         if battery.level <= 0.15 { return .red }
-        if battery.level <= 0.30 { return .yellow }
-        return .white
+        if battery.level <= 0.20 { return .orange }
+        return .white.opacity(0.9)
+    }
+
+    private var iconName: String {
+        switch battery.level {
+        case ..<0.05: "battery.0percent"
+        case ..<0.25: "battery.25percent"
+        case ..<0.50: "battery.50percent"
+        case ..<0.75: "battery.75percent"
+        default: "battery.100percent"
+        }
     }
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2) {
+            Image(systemName: iconName)
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(tint)
             Text("\(battery.percent)%")
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundStyle(tint)
                 .monospacedDigit()
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                    .strokeBorder(.white.opacity(0.5), lineWidth: 1)
-                    .frame(width: 18, height: 10)
-                RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                    .fill(fill)
-                    .frame(width: max(2, 16 * battery.level), height: 7)
-                    .padding(.leading, 1)
-            }
+                .lineLimit(1)
         }
-        .foregroundStyle(.white.opacity(0.9))
+        .fixedSize()
     }
 }
 

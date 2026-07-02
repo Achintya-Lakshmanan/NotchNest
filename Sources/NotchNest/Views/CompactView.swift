@@ -45,11 +45,11 @@ struct CompactView: View {
             // Notch cutout gap
             Spacer(minLength: metrics.notchWidth - 16)
 
-            // Right widget — charging bolt animation, else equalizer when playing.
+            // Right widget — charging, equalizer when playing, else battery % per schedule.
             HStack {
                 Spacer(minLength: 0)
-                if state.battery.isCharging {
-                    TimelineView(.periodic(from: .now, by: 60)) { _ in
+                TimelineView(.periodic(from: .now, by: 60)) { _ in
+                    if state.battery.isCharging {
                         if settings.isBatteryPercentVisibleInCompact() {
                             CompactChargingDisplay(battery: state.battery)
                                 .transition(.scale.combined(with: .opacity))
@@ -57,10 +57,13 @@ struct CompactView: View {
                             ChargingBadge(battery: state.battery, showPercent: false)
                                 .transition(.scale.combined(with: .opacity))
                         }
+                    } else if let np = state.nowPlaying {
+                        EqualizerView(playing: np.isPlaying, color: .white)
+                            .transition(.scale.combined(with: .opacity))
+                    } else if settings.isBatteryPercentVisibleInCompact(), state.battery.hasBattery {
+                        CompactBattery(battery: state.battery)
+                            .transition(.scale.combined(with: .opacity))
                     }
-                } else if let np = state.nowPlaying {
-                    EqualizerView(playing: np.isPlaying, color: .white)
-                        .transition(.scale.combined(with: .opacity))
                 }
             }
             .frame(width: 50)
