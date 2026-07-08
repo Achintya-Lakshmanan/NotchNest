@@ -14,6 +14,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/NotchNest"
 cp Info.plist "$APP/Contents/Info.plist"
+if [ -f AppIcon.icns ]; then
+  cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
 
 # Sign with a stable identity (Apple Development / Developer ID) so macOS keeps
 # permission grants (Accessibility, etc.) across rebuilds. Falls back to ad-hoc.
