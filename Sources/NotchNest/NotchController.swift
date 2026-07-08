@@ -195,12 +195,10 @@ final class NotchController: NSObject {
         let btEvents = BluetoothEventMonitor()
         bluetoothEventMonitor = btEvents
         btEvents.start { [weak self] name, address, connected in
-            MainActor.assumeIsolated {
-                if connected {
-                    self?.state?.bluetoothDidConnect(name: name, address: address)
-                } else {
-                    self?.state?.bluetoothDidDisconnect(name: name, address: address)
-                }
+            if connected {
+                self?.state?.bluetoothDidConnect(name: name, address: address)
+            } else {
+                self?.state?.bluetoothDidDisconnect(name: name, address: address)
             }
         }
         pollBluetooth()

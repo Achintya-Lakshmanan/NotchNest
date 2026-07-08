@@ -2,20 +2,20 @@ import Foundation
 import IOBluetooth
 
 /// Event-driven connect/disconnect detection via IOBluetooth (source of truth for toasts).
-@MainActor
 final class BluetoothEventMonitor: NSObject {
-    typealias EventHandler = (_ name: String, _ address: String, _ connected: Bool) -> Void
+    typealias EventHandler = @MainActor (_ name: String, _ address: String, _ connected: Bool) -> Void
 
-    private(set) var connectedAddresses: Set<String> = []
+    @MainActor private(set) var connectedAddresses: Set<String> = []
 
-    private var onEvent: EventHandler?
+    @MainActor private var onEvent: EventHandler?
     /// Last delivered event kind per address (true = connected).
-    private var lastEventKind: [String: Bool] = [:]
+    @MainActor private var lastEventKind: [String: Bool] = [:]
     /// Pending disconnect toasts — cancelled if a reconnect flap occurs within the window.
-    private var pendingDisconnect: [String: DispatchWorkItem] = [:]
+    @MainActor private var pendingDisconnect: [String: DispatchWorkItem] = [:]
 
     private let flapWindow: TimeInterval = 0.6
 
+    @MainActor
     func start(onEvent: @escaping EventHandler) {
         self.onEvent = onEvent
 
@@ -28,6 +28,7 @@ final class BluetoothEventMonitor: NSObject {
     }
 
     /// Seed connected devices at launch without firing toasts.
+    @MainActor
     private func seedInitialState() {
         guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
         for device in paired where device.isConnected() {
@@ -38,7 +39,7 @@ final class BluetoothEventMonitor: NSObject {
         }
     }
 
-    // MARK: - IOBluetooth callbacks
+    // MARK: - IOBluetooth callbacks (may arrive on CoreBluetooth's background queue)
 
     @objc private func deviceConnected(
         _ notification: IOBluetoothUserNotification,
@@ -46,10 +47,28 @@ final class BluetoothEventMonitor: NSObject {
         moreComing: Bool
     ) {
         guard let address = device.addressString, !address.isEmpty else { return }
-        let name = deviceDisplayName(device)
-
+        let name = Self.displayName(for: device)
         registerDisconnect(for: device)
 
+        Task { @MainActor [weak self] in
+            self?.handleConnect(name: name, address: address)
+        }
+    }
+
+    @objc private func deviceDisconnected(
+        _ notification: IOBluetoothUserNotification,
+        device: IOBluetoothDevice
+    ) {
+        guard let address = device.addressString, !address.isEmpty else { return }
+        let name = Self.displayName(for: device)
+
+        Task { @MainActor [weak self] in
+            self?.handleDisconnect(name: name, address: address)
+        }
+    }
+
+    @MainActor
+    private func handleConnect(name: String, address: String) {
         // Flap: reconnect shortly after disconnect — suppress both toasts.
         if let pending = pendingDisconnect.removeValue(forKey: address) {
             pending.cancel()
@@ -66,13 +85,8 @@ final class BluetoothEventMonitor: NSObject {
         onEvent?(name, address, true)
     }
 
-    @objc private func deviceDisconnected(
-        _ notification: IOBluetoothUserNotification,
-        device: IOBluetoothDevice
-    ) {
-        guard let address = device.addressString, !address.isEmpty else { return }
-        let name = deviceDisplayName(device)
-
+    @MainActor
+    private func handleDisconnect(name: String, address: String) {
         // Ignore duplicate disconnect notifications.
         if lastEventKind[address] == false { return }
 
@@ -82,10 +96,12 @@ final class BluetoothEventMonitor: NSObject {
         // Delay disconnect toast so rapid disconnect→connect flaps show nothing.
         pendingDisconnect[address]?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
-            self.pendingDisconnect.removeValue(forKey: address)
-            guard self.lastEventKind[address] == false else { return }
-            self.onEvent?(name, address, false)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.pendingDisconnect.removeValue(forKey: address)
+                guard self.lastEventKind[address] == false else { return }
+                self.onEvent?(name, address, false)
+            }
         }
         pendingDisconnect[address] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + flapWindow, execute: work)
@@ -97,7 +113,7 @@ final class BluetoothEventMonitor: NSObject {
         device.register(forDisconnectNotification: self, selector: #selector(deviceDisconnected(_:device:)))
     }
 
-    private func deviceDisplayName(_ device: IOBluetoothDevice) -> String {
+    private static func displayName(for device: IOBluetoothDevice) -> String {
         if let name = device.name, !name.isEmpty { return name }
         if let name = device.nameOrAddress as String?, !name.isEmpty { return name }
         return device.addressString ?? "Bluetooth Device"
