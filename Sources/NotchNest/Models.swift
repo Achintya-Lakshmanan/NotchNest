@@ -67,6 +67,9 @@ struct NowPlaying: Equatable {
 // MARK: - Battery
 
 struct BatteryInfo: Equatable {
+    /// Above this level, the closed notch hides the % readout (bolt/equalizer still allowed).
+    static let compactPercentThreshold = 65
+
     var level: Double = 1.0        // 0...1
     var isCharging: Bool = false
     var isPluggedIn: Bool = false

@@ -50,7 +50,7 @@ struct CompactView: View {
                 Spacer(minLength: 0)
                 TimelineView(.periodic(from: .now, by: 60)) { _ in
                     if state.battery.isCharging {
-                        if settings.isBatteryPercentVisibleInCompact() {
+                        if settings.isBatteryPercentVisibleInCompact(percent: state.battery.percent) {
                             CompactChargingDisplay(battery: state.battery)
                                 .transition(.scale.combined(with: .opacity))
                         } else {
@@ -60,7 +60,7 @@ struct CompactView: View {
                     } else if let np = state.nowPlaying {
                         EqualizerView(playing: np.isPlaying, color: .white)
                             .transition(.scale.combined(with: .opacity))
-                    } else if settings.isBatteryPercentVisibleInCompact(), state.battery.hasBattery {
+                    } else if settings.isBatteryPercentVisibleInCompact(percent: state.battery.percent), state.battery.hasBattery {
                         CompactBattery(battery: state.battery)
                             .transition(.scale.combined(with: .opacity))
                     }

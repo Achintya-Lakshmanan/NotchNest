@@ -67,7 +67,8 @@ final class Settings: ObservableObject {
         else { disabledTabs.insert(tab.rawValue) }
     }
 
-    func isBatteryPercentVisibleInCompact(now: Date = Date()) -> Bool {
+    func isBatteryPercentVisibleInCompact(now: Date = Date(), percent: Int) -> Bool {
+        guard percent <= BatteryInfo.compactPercentThreshold else { return false }
         guard batteryPercentInCompact else { return false }
         guard batteryCompactSchedule else { return true }
         let hour = Calendar.current.component(.hour, from: now)
