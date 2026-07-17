@@ -236,6 +236,14 @@ struct BTDevice: Identifiable, Equatable {
 
     var id: String { address }
 
+    var normalizedAddress: String { Self.normalizeAddress(address) }
+
+    static func normalizeAddress(_ address: String) -> String {
+        address.lowercased()
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: ":", with: "")
+    }
+
     /// Best single number to show (AirPods report left/right; pick the min).
     var primaryBattery: Int? {
         let parts = [batteryLeft, batteryRight, batteryMain].compactMap { $0 }

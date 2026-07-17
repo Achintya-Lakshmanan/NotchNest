@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 struct NotchRootView: View {
     @ObservedObject var state: NotchState
+    @ObservedObject private var settings = Settings.shared
     @State private var dropTargeted = false
 
     var body: some View {
@@ -12,11 +13,13 @@ struct NotchRootView: View {
                 .fill(.black)
                 // Album-art tint blended into the top of the card.
                 .overlay {
-                    if let c = state.artworkColor {
-                        NotchShape()
-                            .fill(LinearGradient(colors: [c.opacity(0.7), c.opacity(0.0)],
-                                                 startPoint: .top, endPoint: .center))
-                            .animation(.easeInOut(duration: 0.5), value: state.artworkColor)
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        if showArtworkTint(now: context.date), let c = state.artworkColor {
+                            NotchShape()
+                                .fill(LinearGradient(colors: [c.opacity(0.7), c.opacity(0.0)],
+                                                     startPoint: .top, endPoint: .center))
+                                .animation(.easeInOut(duration: 0.5), value: state.artworkColor)
+                        }
                     }
                 }
                 // Only stroke for transient feedback (drop / just-charged), never by default.
@@ -76,6 +79,11 @@ struct NotchRootView: View {
         .onDrop(of: [.fileURL], isTargeted: $dropTargeted.animation(.easeOut(duration: 0.15))) { providers in
             handleDrop(providers)
         }
+    }
+
+    private func showArtworkTint(now: Date) -> Bool {
+        if state.isExpanded { return true }
+        return settings.isMusicVisibleInCompact(now: now)
     }
 
     private var strokeColor: Color {

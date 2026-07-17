@@ -386,7 +386,10 @@ struct BatteryCluster: View {
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(pct <= 20 ? .red : .white.opacity(0.85))
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
+                .layoutPriority(1)
                 .transition(.opacity)
             }
 

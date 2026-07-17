@@ -7,7 +7,6 @@ final class NotchController: NSObject {
     private var panel: NotchPanel?
     private var state: NotchState?
     private var statusItem: NSStatusItem?
-    private var prefsWindow: NSWindow?
     private var cancellables = Set<AnyCancellable>()
     private var mediaTimer: Timer?
     private var batteryTimer: Timer?
@@ -47,12 +46,6 @@ final class NotchController: NSObject {
         observeExpansion()
         setupTimers()
         setupStatusItem()
-
-        NotificationCenter.default.addObserver(
-            forName: .openPreferences, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.openPreferences() }
-        }
 
         // HUD key tap (volume/brightness). Needs Accessibility permission.
         hudController.onEvent = { [weak self] kind, value in
@@ -97,6 +90,7 @@ final class NotchController: NSObject {
         if !expanded && state.btPopup != nil { return }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.72)) {
             state.isExpanded = expanded
+            if !expanded { state.showingPreferences = false }
         }
         // Let NotchBar (the menu bar manager) tuck items away while we're open.
         DistributedNotificationCenter.default().postNotificationName(
@@ -235,19 +229,11 @@ final class NotchController: NSObject {
     }
 
     @objc private func openPreferences() {
-        if prefsWindow == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 360, height: 360),
-                styleMask: [.titled, .closable],
-                backing: .buffered, defer: false)
-            window.title = "NotchNest Preferences"
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SettingsView())
-            window.center()
-            prefsWindow = window
+        guard let state else { return }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.72)) {
+            state.showingPreferences = true
         }
-        NSApp.activate(ignoringOtherApps: true)
-        prefsWindow?.makeKeyAndOrderFront(nil)
+        setExpanded(true)
     }
 
     // MARK: Screen / metrics

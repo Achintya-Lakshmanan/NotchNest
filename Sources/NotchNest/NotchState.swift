@@ -4,6 +4,7 @@ import Combine
 @MainActor
 final class NotchState: ObservableObject {
     @Published var isExpanded = false
+    @Published var showingPreferences = false
     @Published var isHoveringTab = false
     @Published var nowPlaying: NowPlaying?
     @Published var artwork: NSImage?
@@ -336,45 +337,56 @@ final class NotchState: ObservableObject {
     // MARK: Bluetooth
 
     /// Updates device list and battery from `system_profiler` polling (not connect/disconnect toasts).
+    /// IOBluetooth `eventConnected` is the source of truth for which devices are shown.
     func updateBluetooth(_ devices: [BTDevice], eventConnected: Set<String>) {
-        let effective: [BTDevice]
-        if devices.isEmpty && !eventConnected.isEmpty {
-            // Failed/stale poll — keep previous list to avoid UI flicker and phantom events.
-            effective = btDevices
-        } else {
-            effective = devices
+        for d in devices {
+            lastDevices[d.normalizedAddress] = d
         }
 
+        guard !eventConnected.isEmpty else {
+            btDevices = []
+            return
+        }
+
+        let effective = eventConnected.compactMap { normalizedAddr -> BTDevice? in
+            devices.first { $0.normalizedAddress == normalizedAddr }
+                ?? lastDevices[normalizedAddr]
+                ?? btDevices.first { $0.normalizedAddress == normalizedAddr }
+        }
         btDevices = effective
-        for d in effective { lastDevices[d.address] = d }
-        // Merge polled battery info for event-connected addresses even when we kept the old list.
-        for d in devices { lastDevices[d.address] = d }
 
         for d in effective {
             guard let pct = d.primaryBattery else { continue }
-            if pct <= 20 && !lowWarned.contains(d.address) {
-                lowWarned.insert(d.address)
+            let key = d.normalizedAddress
+            if pct <= 20 && !lowWarned.contains(key) {
+                lowWarned.insert(key)
                 if btPopup == nil { showToast(BTToast(device: d, kind: .lowBattery)) }
             } else if pct > 25 {
-                lowWarned.remove(d.address)
+                lowWarned.remove(key)
             }
         }
     }
 
     func bluetoothDidConnect(name: String, address: String) {
-        let device = lastDevices[address] ?? BTDevice(
+        let key = BTDevice.normalizeAddress(address)
+        let device = lastDevices[key] ?? BTDevice(
             address: address, name: name,
             batteryMain: nil, batteryLeft: nil, batteryRight: nil, batteryCase: nil, minorType: nil
         )
+        if !btDevices.contains(where: { $0.normalizedAddress == key }) {
+            btDevices.append(device)
+        }
         showToast(BTToast(device: device, kind: .connected))
     }
 
     func bluetoothDidDisconnect(name: String, address: String) {
-        let device = lastDevices[address] ?? BTDevice(
+        let key = BTDevice.normalizeAddress(address)
+        btDevices.removeAll { $0.normalizedAddress == key }
+        let device = lastDevices[key] ?? BTDevice(
             address: address, name: name,
             batteryMain: nil, batteryLeft: nil, batteryRight: nil, batteryCase: nil, minorType: nil
         )
-        lowWarned.remove(address)
+        lowWarned.remove(key)
         showToast(BTToast(device: device, kind: .disconnected))
     }
 

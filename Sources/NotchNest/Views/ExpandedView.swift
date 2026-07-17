@@ -11,13 +11,17 @@ struct ExpandedView: View {
             topBar
             Divider().overlay(.white.opacity(0.08))
             Group {
-                switch state.tab {
-                case .music: MusicPane()
-                case .calendar: CalendarPane()
-                case .weather: WeatherPane()
-                case .timer: TimerPane()
-                case .mirror: MirrorPane()
-                case .shelf: ShelfPane()
+                if state.showingPreferences {
+                    SettingsPane()
+                } else {
+                    switch state.tab {
+                    case .music: MusicPane()
+                    case .calendar: CalendarPane()
+                    case .weather: WeatherPane()
+                    case .timer: TimerPane()
+                    case .mirror: MirrorPane()
+                    case .shelf: ShelfPane()
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -44,6 +48,9 @@ struct ExpandedView: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
 
             Spacer()
@@ -52,24 +59,31 @@ struct ExpandedView: View {
             HStack(spacing: 4) {
                 ForEach(settings.enabledTabs, id: \.self) { tab in
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { state.tab = tab }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            state.showingPreferences = false
+                            state.tab = tab
+                        }
                     } label: {
                         Image(systemName: tab.symbol)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(state.tab == tab ? .white : .white.opacity(0.45))
+                            .foregroundStyle(!state.showingPreferences && state.tab == tab ? .white : .white.opacity(0.45))
                             .frame(width: 26, height: 20)
-                            .background(state.tab == tab ? .white.opacity(0.16) : .clear,
+                            .background(!state.showingPreferences && state.tab == tab ? .white.opacity(0.16) : .clear,
                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
                 Button {
-                    NotificationCenter.default.post(name: .openPreferences, object: nil)
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        state.showingPreferences.toggle()
+                    }
                 } label: {
                     Image(systemName: "gearshape.fill")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(state.showingPreferences ? .white : .white.opacity(0.45))
                         .frame(width: 26, height: 20)
+                        .background(state.showingPreferences ? .white.opacity(0.16) : .clear,
+                                   in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
                 .buttonStyle(.plain)
                 .help("Preferences")
@@ -83,7 +97,7 @@ struct ExpandedView: View {
 
     static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "EEE  h:mm a"
+        f.dateFormat = "EEE h:mm a"
         return f
     }()
 }

@@ -33,8 +33,9 @@ final class BluetoothEventMonitor: NSObject {
         guard let paired = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] else { return }
         for device in paired where device.isConnected() {
             guard let address = device.addressString, !address.isEmpty else { continue }
-            connectedAddresses.insert(address)
-            lastEventKind[address] = true
+            let key = Self.normalized(address)
+            connectedAddresses.insert(key)
+            lastEventKind[key] = true
             registerDisconnect(for: device)
         }
     }
@@ -69,41 +70,43 @@ final class BluetoothEventMonitor: NSObject {
 
     @MainActor
     private func handleConnect(name: String, address: String) {
+        let key = Self.normalized(address)
         // Flap: reconnect shortly after disconnect — suppress both toasts.
-        if let pending = pendingDisconnect.removeValue(forKey: address) {
+        if let pending = pendingDisconnect.removeValue(forKey: key) {
             pending.cancel()
-            lastEventKind[address] = true
-            connectedAddresses.insert(address)
+            lastEventKind[key] = true
+            connectedAddresses.insert(key)
             return
         }
 
         // Ignore duplicate connect notifications for the same address.
-        if lastEventKind[address] == true { return }
+        if lastEventKind[key] == true { return }
 
-        lastEventKind[address] = true
-        connectedAddresses.insert(address)
+        lastEventKind[key] = true
+        connectedAddresses.insert(key)
         onEvent?(name, address, true)
     }
 
     @MainActor
     private func handleDisconnect(name: String, address: String) {
+        let key = Self.normalized(address)
         // Ignore duplicate disconnect notifications.
-        if lastEventKind[address] == false { return }
+        if lastEventKind[key] == false { return }
 
-        lastEventKind[address] = false
-        connectedAddresses.remove(address)
+        lastEventKind[key] = false
+        connectedAddresses.remove(key)
 
         // Delay disconnect toast so rapid disconnect→connect flaps show nothing.
-        pendingDisconnect[address]?.cancel()
+        pendingDisconnect[key]?.cancel()
         let work = DispatchWorkItem { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.pendingDisconnect.removeValue(forKey: address)
-                guard self.lastEventKind[address] == false else { return }
+                self.pendingDisconnect.removeValue(forKey: key)
+                guard self.lastEventKind[key] == false else { return }
                 self.onEvent?(name, address, false)
             }
         }
-        pendingDisconnect[address] = work
+        pendingDisconnect[key] = work
         DispatchQueue.main.asyncAfter(deadline: .now() + flapWindow, execute: work)
     }
 
@@ -117,5 +120,9 @@ final class BluetoothEventMonitor: NSObject {
         if let name = device.name, !name.isEmpty { return name }
         if let name = device.nameOrAddress as String?, !name.isEmpty { return name }
         return device.addressString ?? "Bluetooth Device"
+    }
+
+    private static func normalized(_ address: String) -> String {
+        BTDevice.normalizeAddress(address)
     }
 }

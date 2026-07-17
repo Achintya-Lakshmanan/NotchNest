@@ -1,9 +1,5 @@
 import SwiftUI
 
-extension Notification.Name {
-    static let openPreferences = Notification.Name("NotchNestOpenPreferences")
-}
-
 @MainActor
 final class Settings: ObservableObject {
     static let shared = Settings()
@@ -34,6 +30,9 @@ final class Settings: ObservableObject {
     @Published var batteryQuietEndHour: Int {
         didSet { defaults.set(batteryQuietEndHour, forKey: Keys.batteryQuietEndHour) }
     }
+    @Published var musicCompactRespectQuietHours: Bool {
+        didSet { defaults.set(musicCompactRespectQuietHours, forKey: Keys.musicCompactRespectQuietHours) }
+    }
 
     private enum Keys {
         static let meeting = "showMeetingCountdown"
@@ -43,6 +42,7 @@ final class Settings: ObservableObject {
         static let batteryCompactSchedule = "batteryCompactSchedule"
         static let batteryQuietStartHour = "batteryQuietStartHour"
         static let batteryQuietEndHour = "batteryQuietEndHour"
+        static let musicCompactRespectQuietHours = "musicCompactRespectQuietHours"
     }
 
     private init() {
@@ -53,6 +53,7 @@ final class Settings: ObservableObject {
         batteryCompactSchedule = defaults.object(forKey: Keys.batteryCompactSchedule) as? Bool ?? false
         batteryQuietStartHour = defaults.object(forKey: Keys.batteryQuietStartHour) as? Int ?? 22
         batteryQuietEndHour = defaults.object(forKey: Keys.batteryQuietEndHour) as? Int ?? 8
+        musicCompactRespectQuietHours = defaults.object(forKey: Keys.musicCompactRespectQuietHours) as? Bool ?? true
         launchAtLogin = LoginItem.isEnabled
     }
 
@@ -71,8 +72,18 @@ final class Settings: ObservableObject {
         guard percent <= BatteryInfo.compactPercentThreshold else { return false }
         guard batteryPercentInCompact else { return false }
         guard batteryCompactSchedule else { return true }
+        return !isQuietHoursActive(now: now)
+    }
+
+    func isMusicVisibleInCompact(now: Date = Date()) -> Bool {
+        guard musicCompactRespectQuietHours else { return true }
+        guard batteryCompactSchedule else { return true }
+        return !isQuietHoursActive(now: now)
+    }
+
+    func isQuietHoursActive(now: Date = Date()) -> Bool {
         let hour = Calendar.current.component(.hour, from: now)
-        return !isQuietHour(hour)
+        return isQuietHour(hour)
     }
 
     private func isQuietHour(_ hour: Int) -> Bool {
