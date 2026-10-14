@@ -33,6 +33,15 @@ final class Settings: ObservableObject {
     @Published var musicCompactRespectQuietHours: Bool {
         didSet { defaults.set(musicCompactRespectQuietHours, forKey: Keys.musicCompactRespectQuietHours) }
     }
+    @Published var showDownloadsInCompact: Bool {
+        didSet { defaults.set(showDownloadsInCompact, forKey: Keys.showDownloadsInCompact) }
+    }
+    @Published var showCalendarReminder: Bool {
+        didSet { defaults.set(showCalendarReminder, forKey: Keys.showCalendarReminder) }
+    }
+    @Published var showSystemPopups: Bool {
+        didSet { defaults.set(showSystemPopups, forKey: Keys.showSystemPopups) }
+    }
 
     private enum Keys {
         static let meeting = "showMeetingCountdown"
@@ -43,6 +52,9 @@ final class Settings: ObservableObject {
         static let batteryQuietStartHour = "batteryQuietStartHour"
         static let batteryQuietEndHour = "batteryQuietEndHour"
         static let musicCompactRespectQuietHours = "musicCompactRespectQuietHours"
+        static let showDownloadsInCompact = "showDownloadsInCompact"
+        static let showCalendarReminder = "showCalendarReminder"
+        static let showSystemPopups = "showSystemPopups"
     }
 
     private init() {
@@ -54,6 +66,9 @@ final class Settings: ObservableObject {
         batteryQuietStartHour = defaults.object(forKey: Keys.batteryQuietStartHour) as? Int ?? 22
         batteryQuietEndHour = defaults.object(forKey: Keys.batteryQuietEndHour) as? Int ?? 8
         musicCompactRespectQuietHours = defaults.object(forKey: Keys.musicCompactRespectQuietHours) as? Bool ?? true
+        showDownloadsInCompact = defaults.object(forKey: Keys.showDownloadsInCompact) as? Bool ?? true
+        showCalendarReminder = defaults.object(forKey: Keys.showCalendarReminder) as? Bool ?? true
+        showSystemPopups = defaults.object(forKey: Keys.showSystemPopups) as? Bool ?? true
         launchAtLogin = LoginItem.isEnabled
     }
 
@@ -96,12 +111,16 @@ final class Settings: ObservableObject {
         return hour >= start || hour < end
     }
 
+    private static let hourFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h a"
+        return f
+    }()
+
     static func hourLabel(_ hour: Int) -> String {
         var components = DateComponents()
         components.hour = hour
         let date = Calendar.current.date(from: components) ?? Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h a"
-        return formatter.string(from: date)
+        return hourFormatter.string(from: date)
     }
 }

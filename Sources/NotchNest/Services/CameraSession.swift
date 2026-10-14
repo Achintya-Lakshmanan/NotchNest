@@ -24,7 +24,12 @@ final class CameraSession {
     private func configure() {
         configured = true
         session.beginConfiguration()
-        session.sessionPreset = .high
+        // Mirror pane is ~200pt — high preset burns CPU/bandwidth for no gain.
+        if session.canSetSessionPreset(.vga640x480) {
+            session.sessionPreset = .vga640x480
+        } else if session.canSetSessionPreset(.medium) {
+            session.sessionPreset = .medium
+        }
         let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front)
             ?? AVCaptureDevice.default(for: .video)
         if let device, let input = try? AVCaptureDeviceInput(device: device),

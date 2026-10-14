@@ -12,6 +12,9 @@ final class BluetoothEventMonitor: NSObject {
     @MainActor private var lastEventKind: [String: Bool] = [:]
     /// Pending disconnect toasts — cancelled if a reconnect flap occurs within the window.
     @MainActor private var pendingDisconnect: [String: DispatchWorkItem] = [:]
+    /// One disconnect registration per address — re-registering without unregistering
+    /// stacks callbacks and leaks IOBluetoothUserNotification objects.
+    @MainActor private var disconnectNotifications: [String: IOBluetoothUserNotification] = [:]
 
     private let flapWindow: TimeInterval = 0.6
 
@@ -49,10 +52,11 @@ final class BluetoothEventMonitor: NSObject {
     ) {
         guard let address = device.addressString, !address.isEmpty else { return }
         let name = Self.displayName(for: device)
-        registerDisconnect(for: device)
 
         Task { @MainActor [weak self] in
-            self?.handleConnect(name: name, address: address)
+            guard let self else { return }
+            self.registerDisconnect(for: device)
+            self.handleConnect(name: name, address: address)
         }
     }
 
@@ -112,8 +116,15 @@ final class BluetoothEventMonitor: NSObject {
 
     // MARK: - Helpers
 
+    @MainActor
     private func registerDisconnect(for device: IOBluetoothDevice) {
-        device.register(forDisconnectNotification: self, selector: #selector(deviceDisconnected(_:device:)))
+        guard let address = device.addressString, !address.isEmpty else { return }
+        let key = Self.normalized(address)
+        disconnectNotifications[key]?.unregister()
+        disconnectNotifications[key] = device.register(
+            forDisconnectNotification: self,
+            selector: #selector(deviceDisconnected(_:device:))
+        )
     }
 
     private static func displayName(for device: IOBluetoothDevice) -> String {

@@ -14,14 +14,33 @@ struct NotchRootView: View {
                 // Album-art tint blended into the top of the card.
                 .overlay {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
-                        if showArtworkTint(now: context.date), let c = state.artworkColor {
-                            NotchShape()
-                                .fill(LinearGradient(colors: [c.opacity(0.7), c.opacity(0.0)],
-                                                     startPoint: .top, endPoint: .center))
-                                .animation(.easeInOut(duration: 0.5), value: state.artworkColor)
-                        }
+                        let c = state.artworkColor ?? .clear
+                        let visible = state.musicPresentationActive && showArtworkTint(now: context.date)
+                        NotchShape()
+                            .fill(LinearGradient(colors: [c.opacity(0.7), c.opacity(0.0)],
+                                                 startPoint: .top, endPoint: .center))
+                            .padding(.top, presentationInset)
+                            .opacity(visible ? 1 : 0)
+                            .animation(.easeInOut(duration: 1.2), value: visible)
+                            .animation(.easeInOut(duration: 0.5), value: state.artworkColor)
                     }
                 }
+                // Weather paints the whole card edge-to-edge (no black frame around the sky).
+                .overlay {
+                    if let w = state.weather, showsWeatherSky {
+                        let notch = state.metrics.notchHeight / state.metrics.expandedSize.height
+                        let sky = WeatherPane.sky(w)
+                        NotchShape()
+                            .fill(LinearGradient(stops: [
+                                .init(color: .black, location: 0),
+                                .init(color: .black, location: notch),
+                                .init(color: sky[0], location: min(1, notch + 0.22)),
+                                .init(color: sky[1], location: 1),
+                            ], startPoint: .top, endPoint: .bottom))
+                            .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.25), value: showsWeatherSky)
                 // Only stroke for transient feedback (drop / just-charged), never by default.
                 .overlay {
                     if strokeWidth > 0 {
@@ -42,24 +61,25 @@ struct NotchRootView: View {
 
             if let hud = state.hud, !state.isExpanded {
                 HUDView(hud: hud)
-                    .padding(.top, max(4, state.metrics.notchHeight))
+                    .padding(.top, state.metrics.notchHeight)
                     .padding(.bottom, 8)
                     .transition(.opacity)
             } else if let toast = state.btPopup, !state.isExpanded {
                 BTPopupCard(toast: toast, mac: state.battery)
-                    .padding(.top, max(6, state.metrics.notchHeight))
+                    .padding(.top, state.metrics.notchHeight)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
                     .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
             } else if let alert = state.alert, !state.isExpanded {
                 AlertCard(toast: alert)
-                    .padding(.top, max(6, state.metrics.notchHeight))
+                    .padding(.top, state.metrics.notchHeight)
                     .padding(.horizontal, 14)
                     .padding(.bottom, 10)
                     .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .top)))
             } else if state.isExpanded {
                 ExpandedView()
                     .environmentObject(state)
+                    .padding(.top, state.metrics.notchHeight)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
             } else {
                 CompactView(metrics: state.metrics)
@@ -84,6 +104,16 @@ struct NotchRootView: View {
     private func showArtworkTint(now: Date) -> Bool {
         if state.isExpanded { return true }
         return settings.isMusicVisibleInCompact(now: now)
+    }
+
+    private var showsWeatherSky: Bool {
+        state.isExpanded && state.tab == .weather && !state.showingPreferences
+            && !state.showingMenuBarApps && state.hud == nil && state.btPopup == nil && state.alert == nil
+    }
+
+    private var presentationInset: CGFloat {
+        state.isExpanded || state.hud != nil || state.btPopup != nil || state.alert != nil
+            ? state.metrics.notchHeight : 0
     }
 
     private var strokeColor: Color {

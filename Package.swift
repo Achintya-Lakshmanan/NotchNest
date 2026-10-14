@@ -12,6 +12,11 @@ let package = Package(
                 // AppKit + Timer-heavy code; opt out of Swift 6 strict concurrency.
                 .swiftLanguageMode(.v5)
             ]
+        ),
+        .testTarget(
+            name: "NotchNestTests",
+            dependencies: ["NotchNest"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
         )
     ]
 )

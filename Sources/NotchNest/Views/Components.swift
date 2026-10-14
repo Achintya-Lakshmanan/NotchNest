@@ -135,7 +135,7 @@ struct AnimatedChargingBattery: View {
     var height: CGFloat = 13
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let sweep = level + (1 - level) * ((sin(t * 2.2) + 1) / 2)   // level → full → level
             ZStack(alignment: .leading) {
@@ -203,7 +203,8 @@ struct CompactChargingDisplay: View {
     var battery: BatteryInfo
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        // Cap refresh — `.animation` alone re-renders every display frame.
+        TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let pulse = (sin(t * 3) + 1) / 2
             HStack(spacing: 2) {
@@ -230,7 +231,7 @@ struct ChargingBadge: View {
     var showPercent: Bool = true
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 12.0)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
             let pulse = (sin(t * 3) + 1) / 2
             HStack(spacing: 3) {
@@ -476,6 +477,16 @@ struct HUDView: View {
 
 // MARK: - Timer pill (collapsed notch)
 
+struct DownloadPill: View {
+    var body: some View {
+        Image(systemName: "arrow.down.circle.fill")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(Color(red: 0.4, green: 0.75, blue: 1.0))
+            .symbolEffect(.pulse, options: .repeating, isActive: true)
+            .help("Downloading")
+    }
+}
+
 struct TimerPill: View {
     let remaining: TimeInterval
     var body: some View {
@@ -525,6 +536,7 @@ struct MeetingPill: View {
 // MARK: - Audio output switcher
 
 struct OutputDeviceMenu: View {
+    var liveRefresh = true
     @State private var devices: [AudioDevice] = []
     @State private var current: AudioDeviceID?
 
@@ -550,7 +562,7 @@ struct OutputDeviceMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
-        .onAppear(perform: refresh)
+        .onAppear { if liveRefresh { refresh() } }
     }
 
     private func refresh() {

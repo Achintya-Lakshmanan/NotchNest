@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsPane: View {
     @ObservedObject var settings = Settings.shared
+    @EnvironmentObject var state: NotchState
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -13,6 +14,12 @@ struct SettingsPane: View {
                 VStack(alignment: .leading, spacing: 8) {
                     wrappingToggle("Launch at login", isOn: $settings.launchAtLogin)
                     wrappingToggle("Show meeting countdown in the notch", isOn: $settings.showMeetingCountdown)
+                    wrappingToggle("Show next reminder in Calendar", isOn: $settings.showCalendarReminder)
+                    wrappingToggle("Show download icon in closed notch", isOn: $settings.showDownloadsInCompact)
+                    wrappingToggle("Show Focus and Caps Lock popups", isOn: $settings.showSystemPopups)
+                    if settings.showSystemPopups {
+                        FocusAccessRow(monitor: state.focusMonitor)
+                    }
                 }
 
                 Divider().overlay(.white.opacity(0.08))
@@ -122,6 +129,31 @@ struct SettingsPane: View {
             Spacer(minLength: 8)
             Toggle("", isOn: isOn)
                 .labelsHidden()
+        }
+    }
+}
+
+private struct FocusAccessRow: View {
+    @ObservedObject var monitor: FocusMonitor
+
+    var body: some View {
+        if !monitor.isAvailable {
+            Text("Focus popups aren't connected in this build. Caps Lock is ready.")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+        } else {
+        switch monitor.authorization {
+        case .notDetermined:
+            Button("Connect Focus") { monitor.requestAccess() }
+                .buttonStyle(.plain).foregroundStyle(.purple)
+        case .denied, .restricted:
+            Text("Allow Focus status access in System Settings to show Focus popups.")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+        case .authorized:
+            Text("Focus popups follow Share Focus Status. macOS may also show its own banner.")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+        @unknown default:
+            EmptyView()
+        }
         }
     }
 }

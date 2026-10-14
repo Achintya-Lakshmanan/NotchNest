@@ -3,19 +3,31 @@ import SwiftUI
 
 // MARK: - Notch geometry
 
-struct NotchMetrics {
+struct NotchMetrics: Equatable {
     var notchWidth: CGFloat
     var notchHeight: CGFloat
     var screenFrame: CGRect
 
-    /// Size of the collapsed pill hugging the notch.
-    var compactSize: CGSize {
-        CGSize(width: notchWidth + 2 * 56, height: max(notchHeight, 32))
+    /// AppKit screen coordinates are in points and may have negative origins.
+    func panelFrame(for size: CGSize, centeredForDebug: Bool = false) -> CGRect {
+        CGRect(x: screenFrame.midX - size.width / 2,
+               y: centeredForDebug ? screenFrame.midY - size.height / 2
+                    : screenFrame.maxY - size.height,
+               width: size.width, height: size.height)
     }
 
-    /// Size of the expanded card hanging below the notch. The first `notchHeight`
-    /// points sit behind the physical notch, so add that to keep content visible.
-    /// One size for every tab (no resize jump between them).
+    /// Size of the collapsed pill hugging the notch.
+    var compactSize: CGSize {
+        CGSize(width: notchWidth + 112,
+               height: max(notchHeight, 32))
+    }
+
+    /// Both visible sides remain available for hover, even when their content is idle.
+    var compactFrame: CGRect {
+        panelFrame(for: compactSize)
+    }
+
+    /// The black top strip joins the card to the cutout; content stays 250pt tall.
     var expandedSize: CGSize {
         CGSize(width: 540, height: 250 + notchHeight)
     }
@@ -28,6 +40,19 @@ struct NotchMetrics {
     /// Compact pill for volume/brightness HUDs.
     var hudSize: CGSize {
         CGSize(width: max(notchWidth + 2 * 70, 260), height: 38 + notchHeight)
+    }
+
+    /// Keep the original hover target alive throughout a resize.
+    func containsHover(_ point: CGPoint, presentedFrame: CGRect) -> Bool {
+        isInCompactHoverArea(point) || Self.containsIncludingEdges(presentedFrame, point)
+    }
+
+    func isInCompactHoverArea(_ point: CGPoint) -> Bool {
+        Self.containsIncludingEdges(compactFrame, point)
+    }
+
+    private static func containsIncludingEdges(_ rect: CGRect, _ point: CGPoint) -> Bool {
+        point.x >= rect.minX && point.x <= rect.maxX && point.y >= rect.minY && point.y <= rect.maxY
     }
 }
 
@@ -100,6 +125,15 @@ struct ShelfItem: Identifiable, Equatable {
     static func == (lhs: ShelfItem, rhs: ShelfItem) -> Bool { lhs.id == rhs.id }
 }
 
+// MARK: - Downloads
+
+struct DownloadItem: Identifiable, Equatable {
+    var path: String
+    var name: String
+
+    var id: String { path }
+}
+
 // MARK: - Tabs
 
 enum NotchTab: String, CaseIterable {
@@ -107,6 +141,7 @@ enum NotchTab: String, CaseIterable {
     case calendar = "Calendar"
     case weather = "Weather"
     case timer = "Timer"
+    case codex = "Codex"
     case mirror = "Mirror"
     case shelf = "Shelf"
 
@@ -116,6 +151,7 @@ enum NotchTab: String, CaseIterable {
         case .calendar: return "calendar"
         case .weather: return "cloud.sun.fill"
         case .timer: return "timer"
+        case .codex: return "chevron.left.forwardslash.chevron.right"
         case .mirror: return "camera.fill"
         case .shelf: return "tray.full"
         }

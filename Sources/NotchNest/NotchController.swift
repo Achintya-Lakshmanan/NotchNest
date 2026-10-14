@@ -4,159 +4,80 @@ import Combine
 
 @MainActor
 final class NotchController: NSObject {
-    private var panel: NotchPanel?
+    private var presentation: NotchPresentation?
     private var state: NotchState?
     private var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
     private var mediaTimer: Timer?
     private var batteryTimer: Timer?
-    private var collapseWork: DispatchWorkItem?
+    private var calendarTimer: Timer?
+    private var weatherTimer: Timer?
+    private var bluetoothTimer: Timer?
     private let hudController = HUDController()
     private var bluetoothEventMonitor: BluetoothEventMonitor?
+    private var downloadMonitor: DownloadMonitor?
+    func receiveFocusStatus(_ focused: Bool?) { state?.focusMonitor.receive(focused) }
+    /// Skip-count while nothing is playing so AppleScript isn't hammered idle.
+    private var mediaIdleTicks = 0
+    private var displayTarget: NotchDisplayTarget?
+    private var displayRefresh: DisplayRefresh?
+    private var hudRetryWork: DispatchWorkItem?
+    private var hasRequestedHUDPermission = false
+    private var displaysAsleep = false
+    private var displayStatusItem: NSMenuItem?
 
     // Verification helper: render the expanded card centered & floating so it's
     // visible to screenshot tooling. Not used in normal operation.
     private let debug = ProcessInfo.processInfo.environment["NOTCHNEST_DEBUG"] == "1"
 
     func start() {
-        let screen = notchScreen()
-        let metrics = computeMetrics(for: screen)
+        let target = DisplayRouting.currentTarget()
+        // Placeholder geometry is never displayed when no MacBook notch exists.
+        let metrics = target?.metrics ?? NotchMetrics(notchWidth: 200, notchHeight: 32, screenFrame: .zero)
         let state = NotchState(metrics: metrics)
         self.state = state
 
-        let panel = NotchPanel(metrics: metrics)
-        panel.onHoverChange = { [weak self] hovering in
-            self?.handleHover(hovering)
+        presentation = NotchPresentation(state: state, debug: debug)
+        displayRefresh = DisplayRefresh(target: target, source: { DisplayRouting.currentTarget() }) { [weak self] in
+            self?.applyDisplayTarget($0)
         }
-        self.panel = panel
-
-        let root = NotchRootView(state: state).environmentObject(state)
-        let hosting = NSHostingView(rootView: root)
-        hosting.layer?.backgroundColor = .clear
-        panel.trackingHost.setContent(hosting)
-
-        if debug {
-            panel.level = .floating
-            state.isExpanded = true
-        }
-
-        relayout()
-        panel.orderFrontRegardless()
-
-        observeExpansion()
         setupTimers()
         setupStatusItem()
+        observeDisplays()
 
         // HUD key tap (volume/brightness). Needs Accessibility permission.
+        // Event-tap callbacks are not guaranteed MainActor-isolated — hop explicitly.
         hudController.onEvent = { [weak self] kind, value in
-            MainActor.assumeIsolated { self?.state?.showHUD(kind, value: value) }
+            Task { @MainActor in
+                guard let self, self.displayTarget != nil else { return }
+                self.state?.showHUD(kind, value: value)
+            }
         }
-        startHUD(prompt: true, attemptsLeft: 40)
+        hudController.onCapsLockChanged = { [weak self] enabled in
+            Task { @MainActor in
+                guard let self, self.displayTarget != nil,
+                      Settings.shared.showSystemPopups else { return }
+                self.state?.showAlert(AlertToast(symbol: "capslock.fill",
+                    title: enabled ? "Caps Lock On" : "Caps Lock Off",
+                    subtitle: enabled ? "Typing in uppercase" : "Normal typing",
+                    tint: enabled ? .orange : .gray), duration: 2)
+            }
+        }
+        applyDisplayTarget(target)
+        state.focusMonitor.start { [weak self] enabled in
+            guard let self, self.displayTarget != nil,
+                  Settings.shared.showSystemPopups else { return }
+            self.state?.showAlert(AlertToast(symbol: enabled ? "moon.fill" : "moon",
+                title: enabled ? "Focus On" : "Focus Off",
+                subtitle: enabled ? "Notifications silenced" : "Notifications resumed",
+                tint: enabled ? .purple : .gray), duration: 2.5)
+        }
 
         // First fill.
         state.refreshNowPlaying()
         state.battery = BatteryMonitor.current()
         state.refreshCalendar()
         state.refreshWeather()
-    }
-
-    // MARK: Expansion
-
-    /// Hover events can fire spuriously while the window animates its resize.
-    /// Expand immediately, but debounce + verify the cursor before collapsing.
-    private func handleHover(_ hovering: Bool) {
-        collapseWork?.cancel()
-        if hovering {
-            state?.isHovering = true
-            setExpanded(true)
-        } else {
-            let work = DispatchWorkItem { [weak self] in self?.collapseIfCursorOutside() }
-            collapseWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
-        }
-    }
-
-    private func collapseIfCursorOutside() {
-        guard let panel else { return }
-        // Still inside the (possibly resized) window? Treat as not a real exit.
-        if panel.frame.contains(NSEvent.mouseLocation) { return }
-        state?.isHovering = false
-        setExpanded(false)
-    }
-
-    private func setExpanded(_ expanded: Bool) {
-        guard let state, state.isExpanded != expanded else { return }
-        // Don't collapse out from under an active Bluetooth popup.
-        if !expanded && state.btPopup != nil { return }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.72)) {
-            state.isExpanded = expanded
-            if !expanded { state.showingPreferences = false }
-        }
-        // Let NotchBar (the menu bar manager) tuck items away while we're open.
-        DistributedNotificationCenter.default().postNotificationName(
-            Notification.Name(expanded ? "com.notchbar.notchnest.expanded"
-                                       : "com.notchbar.notchnest.collapsed"),
-            object: nil, userInfo: nil, deliverImmediately: true)
-    }
-
-    private func observeExpansion() {
-        // NOTE: @Published fires in willSet (before the property updates), so we
-        // hop to the next main-loop tick before reading state in relayout().
-        state?.$isExpanded
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.relayout() }
-            .store(in: &cancellables)
-
-        // Bluetooth toast resizes the window to a small banner.
-        state?.$btPopup
-            .map { $0 != nil }
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.relayout() }
-            .store(in: &cancellables)
-
-        // HUD resizes to a compact pill.
-        state?.$hud
-            .map { $0 != nil }
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.relayout() }
-            .store(in: &cancellables)
-
-        // Generic alert toast.
-        state?.$alert
-            .map { $0 != nil }
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.relayout() }
-            .store(in: &cancellables)
-    }
-
-    private func relayout() {
-        guard let panel, let state else { return }
-        let metrics = state.metrics
-        let size: CGSize
-        if state.isExpanded {
-            size = metrics.expandedSize
-        } else if state.hud != nil {
-            size = metrics.hudSize
-        } else if state.btPopup != nil || state.alert != nil {
-            size = metrics.toastSize
-        } else {
-            size = metrics.compactSize
-        }
-        let frame = metrics.screenFrame
-        let originX = frame.midX - size.width / 2
-        let originY = debug ? (frame.midY - size.height / 2) : (frame.maxY - size.height)
-        let target = CGRect(x: originX, y: originY, width: size.width, height: size.height)
-
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.32
-            ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.25, 1)
-            ctx.allowsImplicitAnimation = true
-            panel.animator().setFrame(target, display: true)
-        }
     }
 
     private func pollBluetooth() {
@@ -171,20 +92,33 @@ final class NotchController: NSObject {
     // MARK: Timers
 
     private func setupTimers() {
-        mediaTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.state?.refreshNowPlaying() }
+        mediaTimer = schedule(every: 2.0) { [weak self] in
+            guard let self, let state = self.state else { return }
+            // Idle backoff: poll ~every 10s when nothing is playing (AppleScript is costly).
+            if state.nowPlaying == nil {
+                self.mediaIdleTicks += 1
+                if self.mediaIdleTicks < 5 { return }
+                self.mediaIdleTicks = 0
+            } else {
+                self.mediaIdleTicks = 0
+            }
+            state.refreshNowPlaying()
         }
-        batteryTimer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.state?.updateBattery(BatteryMonitor.current()) }
+        batteryTimer = schedule(every: 8.0) { [weak self] in
+            self?.state?.focusMonitor.refresh()
+            // IOKit + SmartBattery registry reads stay off the main thread.
+            DispatchQueue.global(qos: .utility).async {
+                let info = BatteryMonitor.current()
+                DispatchQueue.main.async { self?.state?.updateBattery(info) }
+            }
         }
-        // Calendar refreshes less often.
-        Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.state?.refreshCalendar() }
+        calendarTimer = schedule(every: 60) { [weak self] in
+            self?.state?.refreshCalendar()
         }
-        // Weather every 15 minutes.
-        Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.state?.refreshWeather() }
+        weatherTimer = schedule(every: 900) { [weak self] in
+            self?.state?.refreshWeather()
         }
+
         // Bluetooth: IOBluetooth for connect/disconnect toasts; system_profiler for battery/UI list.
         let btEvents = BluetoothEventMonitor()
         bluetoothEventMonitor = btEvents
@@ -194,11 +128,40 @@ final class NotchController: NSObject {
             } else {
                 self?.state?.bluetoothDidDisconnect(name: name, address: address)
             }
+            // Fresh battery shortly after connect/disconnect.
+            self?.pollBluetooth()
         }
         pollBluetooth()
-        Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.pollBluetooth() }
+        bluetoothTimer = schedule(every: 30) { [weak self] in
+            // system_profiler is expensive — only while IOBluetooth reports a connection.
+            // Expand alone is not a reason to spawn it (connect/disconnect already re-poll).
+            guard let self else { return }
+            let connected = self.bluetoothEventMonitor?.connectedAddresses ?? []
+            if !connected.isEmpty {
+                self.pollBluetooth()
+            }
         }
+
+        let dl = DownloadMonitor()
+        downloadMonitor = dl
+        dl.start(
+            onUpdate: { [weak self] items in
+                self?.state?.updateDownloads(items)
+            },
+            onFinished: { [weak self] name in
+                self?.state?.downloadDidFinish(name: name)
+            }
+        )
+    }
+
+    /// Timer on `.common` so polling keeps working during tracking/scroll modes.
+    @discardableResult
+    private func schedule(every interval: TimeInterval, _ block: @escaping @MainActor () -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: true) { _ in
+            Task { @MainActor in block() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
     }
 
     // MARK: Status item (quit)
@@ -208,51 +171,102 @@ final class NotchController: NSObject {
         item.button?.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "NotchNest")
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "NotchNest", action: nil, keyEquivalent: ""))
+        let displayStatus = NSMenuItem(title: "Waiting for MacBook display", action: nil, keyEquivalent: "")
+        menu.addItem(displayStatus)
+        displayStatusItem = displayStatus
         menu.addItem(.separator())
+        let apps = NSMenuItem(title: "Menu bar apps", action: #selector(openMenuBarApps), keyEquivalent: "")
+        apps.target = self
+        menu.addItem(apps)
         let prefs = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
         prefs.target = self
         menu.addItem(prefs)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit NotchNest", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
+        // The notch already exposes Preferences and Quit. Keep a fallback icon
+        // only while the MacBook display is unavailable.
+        item.isVisible = displayTarget == nil
         statusItem = item
     }
 
     /// Try to install the HUD key tap; retries until Accessibility is granted
     /// so the user doesn't have to relaunch after enabling it.
     private func startHUD(prompt: Bool, attemptsLeft: Int) {
+        hudRetryWork?.cancel()
+        guard displayTarget != nil else { return }
         if hudController.start(promptForAccess: prompt) { return }
         guard attemptsLeft > 0 else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+        let work = DispatchWorkItem { [weak self] in
             self?.startHUD(prompt: false, attemptsLeft: attemptsLeft - 1)
         }
+        hudRetryWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     @objc private func openPreferences() {
-        guard let state else { return }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.72)) {
-            state.showingPreferences = true
+        presentation?.openPreferences()
+    }
+
+    // MARK: Menu bar drawer
+
+    @objc private func openMenuBarApps() {
+        presentation?.openMenuBarApps()
+    }
+
+    // MARK: Display changes
+
+    private func observeDisplays() {
+        NotificationCenter.default.publisher(for: NSApplication.didChangeScreenParametersNotification)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.scheduleDisplayRefresh() }
+            .store(in: &cancellables)
+
+        let workspace = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification] {
+            workspace.publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.displaysAsleep = true
+                    self?.scheduleDisplayRefresh()
+                }
+                .store(in: &cancellables)
         }
-        setExpanded(true)
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.screensDidWakeNotification] {
+            workspace.publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    self?.displaysAsleep = false
+                    self?.scheduleDisplayRefresh()
+                }
+                .store(in: &cancellables)
+        }
     }
 
-    // MARK: Screen / metrics
-
-    private func notchScreen() -> NSScreen {
-        NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) ?? NSScreen.main ?? NSScreen.screens[0]
+    private func scheduleDisplayRefresh() {
+        displayRefresh?.refresh(displaysAsleep: displaysAsleep)
     }
 
-    private func computeMetrics(for screen: NSScreen) -> NotchMetrics {
-        let frame = screen.frame
-        let top = screen.safeAreaInsets.top
-        let left = screen.auxiliaryTopLeftArea?.width ?? 0
-        let right = screen.auxiliaryTopRightArea?.width ?? 0
+    private func applyDisplayTarget(_ target: NotchDisplayTarget?) {
+        guard let presentation else { return }
+        statusItem?.isVisible = target == nil
+        guard target != displayTarget else { return }
+        hudRetryWork?.cancel()
+        hudController.stop()
+        displayTarget = nil // Block hover and queued HUD/layout callbacks while moving.
+        presentation.hide()
 
-        let hasNotch = top > 0 && (left > 0 || right > 0)
-        let notchWidth = hasNotch ? max(frame.width - left - right, 180) : 200
-        let notchHeight = hasNotch ? top : 32
-
-        return NotchMetrics(notchWidth: notchWidth, notchHeight: notchHeight, screenFrame: frame)
+        guard let target else {
+            displayStatusItem?.title = "Paused — MacBook display unavailable or mirrored"
+            return
+        }
+        displayTarget = target
+        presentation.show(on: target.metrics)
+        displayStatusItem?.title = "On MacBook display — auto-pauses for mirroring"
+        hudController.brightnessDisplayID = target.id
+        let prompt = !hasRequestedHUDPermission
+        hasRequestedHUDPermission = true
+        startHUD(prompt: prompt, attemptsLeft: 40)
     }
 }
 
@@ -260,7 +274,9 @@ final class NotchController: NSObject {
 
 final class NotchPanel: NSPanel {
     let trackingHost: TrackingHostView
-    var onHoverChange: ((Bool) -> Void)?
+    var onPointerChange: ((CGPoint) -> Void)?
+    var onEscape: (() -> Void)?
+    var onMenuBarShortcut: (() -> Void)?
 
     init(metrics: NotchMetrics) {
         trackingHost = TrackingHostView()
@@ -273,16 +289,28 @@ final class NotchPanel: NSPanel {
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false   // we draw the notch ourselves; no system shadow halo
-        level = .statusBar
+        // Stay above native menu-bar hit testing, but below native popup menus.
+        level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        acceptsMouseMovedEvents = true
         isMovableByWindowBackground = false
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         contentView = trackingHost
-        trackingHost.onHoverChange = { [weak self] in self?.onHoverChange?($0) }
+        trackingHost.onPointerChange = { [weak self] in self?.onPointerChange?($0) }
     }
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    override func cancelOperation(_ sender: Any?) { onEscape?() }
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 46,
+           event.modifierFlags.intersection([.control, .option, .shift, .command]) == [.control, .option],
+           let onMenuBarShortcut {
+            onMenuBarShortcut()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 // MARK: - Tracking host
@@ -290,34 +318,44 @@ final class NotchPanel: NSPanel {
 /// Hosts the SwiftUI view and reports mouse enter/exit so the controller
 /// can expand/collapse the panel.
 final class TrackingHostView: NSView {
-    var onHoverChange: ((Bool) -> Void)?
+    var onPointerChange: ((CGPoint) -> Void)?
     private var hosted: NSView?
+    private var pointerTrackingArea: NSTrackingArea?
 
-    func setContent(_ view: NSView) {
+    func setContent<Content: View>(_ view: NSHostingView<Content>) {
         hosted?.removeFromSuperview()
-        view.translatesAutoresizingMaskIntoConstraints = false
+        // The controller owns the panel's size. SwiftUI's default minimum / ideal
+        // size constraints can otherwise grow the window when Calendar contains
+        // both a flexible event list and the fixed-height reminder card.
+        view.sizingOptions = []
+        view.translatesAutoresizingMaskIntoConstraints = true
+        view.frame = bounds
+        view.autoresizingMask = [.width, .height]
         addSubview(view)
-        NSLayoutConstraint.activate([
-            view.topAnchor.constraint(equalTo: topAnchor),
-            view.bottomAnchor.constraint(equalTo: bottomAnchor),
-            view.leadingAnchor.constraint(equalTo: leadingAnchor),
-            view.trailingAnchor.constraint(equalTo: trailingAnchor),
-        ])
         hosted = view
     }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
+        // inVisibleRect follows bounds changes. Replacing the area every frame
+        // can lose the enter event while the pointer is already over a wing.
+        guard pointerTrackingArea == nil else { return }
         let area = NSTrackingArea(
-            rect: bounds,
-            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+            rect: .zero,
+            options: [.activeAlways, .mouseEnteredAndExited, .mouseMoved, .inVisibleRect],
             owner: self,
             userInfo: nil
         )
+        pointerTrackingArea = area
         addTrackingArea(area)
     }
 
-    override func mouseEntered(with event: NSEvent) { onHoverChange?(true) }
-    override func mouseExited(with event: NSEvent) { onHoverChange?(false) }
+    private func pointerChanged(_ event: NSEvent) {
+        guard let window else { return }
+        onPointerChange?(window.convertPoint(toScreen: event.locationInWindow))
+    }
+
+    override func mouseEntered(with event: NSEvent) { pointerChanged(event) }
+    override func mouseExited(with event: NSEvent) { pointerChanged(event) }
+    override func mouseMoved(with event: NSEvent) { pointerChanged(event) }
 }

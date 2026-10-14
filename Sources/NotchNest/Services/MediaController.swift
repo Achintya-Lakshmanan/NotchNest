@@ -5,6 +5,45 @@ import AppKit
 final class MediaController {
     private let queue = DispatchQueue(label: "notchnest.media", qos: .userInitiated)
 
+    /// Compiled once — compiling NSAppleScript on every 2s poll is wasteful.
+    private lazy var spotifyQueryScript = NSAppleScript(source: """
+        tell application "Spotify"
+          if it is running then
+            try
+              set t to current track
+              set out to (name of t) & "\\n" & (artist of t) & "\\n" & (album of t) & "\\n" & (player state as string) & "\\n" & (player position as string) & "\\n" & ((duration of t) / 1000) & "\\n" & (artwork url of t)
+              return out
+            on error
+              return ""
+            end try
+          end if
+        end tell
+        """)
+    private lazy var musicQueryScript = NSAppleScript(source: """
+        tell application "Music"
+          if it is running then
+            try
+              set t to current track
+              set out to (name of t) & "\\n" & (artist of t) & "\\n" & (album of t) & "\\n" & (player state as string) & "\\n" & (player position as string) & "\\n" & (duration of t) & "\\n"
+              return out
+            on error
+              return ""
+            end try
+          end if
+        end tell
+        """)
+    private lazy var musicArtworkScript = NSAppleScript(source: """
+        tell application "Music"
+          if it is running then
+            try
+              return (data of artwork 1 of current track)
+            on error
+              return missing value
+            end try
+          end if
+        end tell
+        """)
+
     // MARK: Detection
 
     private func isRunning(_ app: MediaApp) -> Bool {
@@ -34,39 +73,12 @@ final class MediaController {
     }
 
     private func query(_ app: MediaApp) -> NowPlaying? {
-        let script: String
+        let script: NSAppleScript?
         switch app {
-        case .spotify:
-            script = """
-            tell application "Spotify"
-              if it is running then
-                try
-                  set t to current track
-                  set out to (name of t) & "\\n" & (artist of t) & "\\n" & (album of t) & "\\n" & (player state as string) & "\\n" & (player position as string) & "\\n" & ((duration of t) / 1000) & "\\n" & (artwork url of t)
-                  return out
-                on error
-                  return ""
-                end try
-              end if
-            end tell
-            """
-        case .music:
-            script = """
-            tell application "Music"
-              if it is running then
-                try
-                  set t to current track
-                  set out to (name of t) & "\\n" & (artist of t) & "\\n" & (album of t) & "\\n" & (player state as string) & "\\n" & (player position as string) & "\\n" & (duration of t) & "\\n"
-                  return out
-                on error
-                  return ""
-                end try
-              end if
-            end tell
-            """
+        case .spotify: script = spotifyQueryScript
+        case .music: script = musicQueryScript
         }
-
-        guard let raw = run(script), !raw.isEmpty else { return nil }
+        guard let script, let raw = run(script), !raw.isEmpty else { return nil }
         let parts = raw.components(separatedBy: "\n")
         guard parts.count >= 6 else { return nil }
 
@@ -91,21 +103,10 @@ final class MediaController {
 
     func fetchMusicArtwork(completion: @escaping (NSImage?) -> Void) {
         queue.async {
-            let script = """
-            tell application "Music"
-              if it is running then
-                try
-                  return (data of artwork 1 of current track)
-                on error
-                  return missing value
-                end try
-              end if
-            end tell
-            """
             var image: NSImage?
-            if let s = NSAppleScript(source: script) {
+            if let script = self.musicArtworkScript {
                 var error: NSDictionary?
-                let desc = s.executeAndReturnError(&error)
+                let desc = script.executeAndReturnError(&error)
                 if error == nil {
                     let data = desc.data
                     if !data.isEmpty { image = NSImage(data: data) }
@@ -125,23 +126,28 @@ final class MediaController {
         guard let app = app ?? activeApp() else { return }
         let value = max(0, Int(seconds))
         queue.async {
-            _ = self.run("tell application \"\(app.rawValue)\" to set player position to \(value)")
+            _ = self.runSource("tell application \"\(app.rawValue)\" to set player position to \(value)")
         }
     }
 
     private func command(_ verb: String, app: MediaApp?) {
         guard let app = app ?? activeApp() else { return }
-        queue.async { _ = self.run("tell application \"\(app.rawValue)\" to \(verb)") }
+        queue.async { _ = self.runSource("tell application \"\(app.rawValue)\" to \(verb)") }
     }
 
     // MARK: AppleScript runner
 
     @discardableResult
-    private func run(_ source: String) -> String? {
-        guard let script = NSAppleScript(source: source) else { return nil }
+    private func run(_ script: NSAppleScript) -> String? {
         var error: NSDictionary?
         let output = script.executeAndReturnError(&error)
         if error != nil { return nil }
         return output.stringValue
+    }
+
+    @discardableResult
+    private func runSource(_ source: String) -> String? {
+        guard let script = NSAppleScript(source: source) else { return nil }
+        return run(script)
     }
 }

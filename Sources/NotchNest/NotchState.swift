@@ -5,12 +5,19 @@ import Combine
 final class NotchState: ObservableObject {
     @Published var isExpanded = false
     @Published var showingPreferences = false
-    @Published var isHoveringTab = false
-    @Published var nowPlaying: NowPlaying?
+    @Published var showingMenuBarApps = false
+    @Published var nowPlaying: NowPlaying? {
+        didSet { updateMusicPresentation(wasPlaying: oldValue?.isPlaying == true) }
+    }
     @Published var artwork: NSImage?
     @Published var artworkColor: Color?
+    @Published private(set) var musicPresentationActive = false
+    private let musicIdleDelay: Duration
+    private var musicIdleExpiry: Task<Void, Never>?
+    private var musicPresentationGeneration = 0
     @Published var battery = BatteryInfo()
     @Published var shelf: [ShelfItem] = []
+    @Published var downloads: [DownloadItem] = []
     @Published var tab: NotchTab = .music
     @Published var justDropped = false   // triggers a little bounce
     @Published var chargeFlash = false   // "just plugged in" celebration
@@ -52,18 +59,52 @@ final class NotchState: ObservableObject {
         timerDuration > 0 ? max(0, min(1, timerRemaining / timerDuration)) : 0
     }
 
-    let metrics: NotchMetrics
+    @Published var metrics: NotchMetrics
+    var presentationSize: CGSize {
+        if isExpanded { return metrics.expandedSize }
+        if hud != nil { return metrics.hudSize }
+        if btPopup != nil || alert != nil { return metrics.toastSize }
+        return metrics.compactSize
+    }
     let media = MediaController()
     let calendar = CalendarService()
+    let codexUsage: CodexUsageService
+    let claudeUsage: ClaudeUsageService
+    let reminders: ReminderService
+    let focusMonitor = FocusMonitor()
+    let menuBarApps: MenuBarAppsService
 
     private var artworkURLLoaded: String?
     private var lastDevices: [String: BTDevice] = [:]
     private var lowWarned: Set<String> = []
     private var btPopupToken = 0
 
-    init(metrics: NotchMetrics) {
+    init(metrics: NotchMetrics, codexUsage: CodexUsageService? = nil, reminders: ReminderService? = nil,
+         musicIdleDelay: Duration = .seconds(30), menuBarApps: MenuBarAppsService? = nil,
+         claudeUsage: ClaudeUsageService? = nil) {
         self.metrics = metrics
+        self.musicIdleDelay = musicIdleDelay
+        self.codexUsage = codexUsage ?? CodexUsageService()
+        self.claudeUsage = claudeUsage ?? ClaudeUsageService()
+        self.reminders = reminders ?? ReminderService()
+        self.menuBarApps = menuBarApps ?? MenuBarAppsService()
         self.calendarAuthorized = calendar.isAuthorized
+    }
+
+    /// Keep the timer, shelf, and selected tab, but never replay an old HUD or
+    /// connection toast after coming back from a TV-only/mirrored session.
+    func dismissTransientPresentation() {
+        hudToken += 1
+        btPopupToken += 1
+        alertToken += 1
+        hud = nil
+        btPopup = nil
+        alert = nil
+        chargeFlash = false
+        isHovering = false
+        isExpanded = false
+        showingPreferences = false
+        showingMenuBarApps = false
     }
 
     static func startOfMonth(_ date: Date) -> Date {
@@ -73,10 +114,64 @@ final class NotchState: ObservableObject {
 
     // MARK: Media
 
+    var showsCompactMeeting: Bool {
+        let settings = Settings.shared
+        return settings.showMeetingCountdown && settings.isEnabled(.calendar) && imminentEvent != nil
+    }
+
+    /// Music can keep reporting its last track for days. Keep that cached data
+    /// for resuming playback, but only present playing or recently paused music.
+    var displayedNowPlaying: NowPlaying? {
+        musicPresentationActive ? nowPlaying : nil
+    }
+
+    private func updateMusicPresentation(wasPlaying: Bool) {
+        if nowPlaying?.isPlaying == true {
+            guard !wasPlaying || !musicPresentationActive else { return }
+            cancelMusicIdleExpiry()
+            musicPresentationActive = true
+        } else if nowPlaying == nil {
+            cancelMusicIdleExpiry()
+            musicPresentationActive = false
+        } else if wasPlaying {
+            // One expiry per pause, not a repeating timer. Metadata / seek updates
+            // while paused must not keep extending the overview's lifetime.
+            cancelMusicIdleExpiry()
+            let generation = musicPresentationGeneration
+            let delay = musicIdleDelay
+            musicIdleExpiry = Task { [weak self] in
+                do { try await Task.sleep(for: delay) } catch { return }
+                guard !Task.isCancelled, let self,
+                      self.musicPresentationGeneration == generation,
+                      self.nowPlaying?.isPlaying != true else { return }
+                self.musicPresentationActive = false
+                self.musicIdleExpiry = nil
+            }
+        }
+        // Launching while Music is already paused starts idle. Retain cached
+        // artwork for resume, but do not display it as current playback.
+    }
+
+    private func cancelMusicIdleExpiry() {
+        musicPresentationGeneration += 1
+        musicIdleExpiry?.cancel()
+        musicIdleExpiry = nil
+    }
+
     func refreshNowPlaying() {
         media.fetch { [weak self] np in
             guard let self else { return }
             let oldKey = self.nowPlaying?.trackKey
+            // Skip @Published churn when nothing meaningful changed (sub-second elapsed noise).
+            if let np, let old = self.nowPlaying,
+               np.trackKey == old.trackKey,
+               np.isPlaying == old.isPlaying,
+               np.app == old.app,
+               abs(np.elapsed - old.elapsed) < 0.4,
+               abs(np.duration - old.duration) < 0.01 {
+                return
+            }
+            if np == nil, self.nowPlaying == nil { return }
             self.nowPlaying = np
             if np?.trackKey != oldKey {
                 self.setArtwork(nil)
@@ -117,7 +212,11 @@ final class NotchState: ObservableObject {
         guard let url = URL(string: urlString) else { return }
         URLSession.shared.dataTask(with: url) { [weak self] data, _, _ in
             guard let data, let image = NSImage(data: data) else { return }
-            DispatchQueue.main.async { self?.setArtwork(image) }
+            DispatchQueue.main.async {
+                // Drop stale responses when the track (URL) already changed.
+                guard let self, self.artworkURLLoaded == urlString else { return }
+                self.setArtwork(image)
+            }
         }.resume()
     }
 
@@ -161,6 +260,7 @@ final class NotchState: ObservableObject {
     // MARK: Battery / charging
 
     func updateBattery(_ newValue: BatteryInfo) {
+        guard newValue != battery else { return }
         let wasCharging = battery.isCharging
         battery = newValue
         if newValue.isCharging && !wasCharging {
@@ -203,9 +303,11 @@ final class NotchState: ObservableObject {
         timerEnd = Date().addingTimeInterval(timerRemaining)
         timerRunning = true
         ticker?.invalidate()
-        ticker = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tickTimer() }
         }
+        RunLoop.main.add(t, forMode: .common)
+        ticker = t
     }
 
     func pauseTimer() {
@@ -224,8 +326,15 @@ final class NotchState: ObservableObject {
 
     private func tickTimer() {
         guard let end = timerEnd else { return }
-        timerRemaining = max(0, end.timeIntervalSinceNow)
-        if timerRemaining <= 0 { finishTimer() }
+        let remaining = max(0, end.timeIntervalSinceNow)
+        if remaining <= 0 {
+            finishTimer()
+            return
+        }
+        // Coalesce @Published churn: UI shows whole seconds; skip sub-second noise.
+        if Int(remaining.rounded()) != Int(timerRemaining.rounded()) {
+            timerRemaining = remaining
+        }
     }
 
     private func finishTimer() {
@@ -242,11 +351,11 @@ final class NotchState: ObservableObject {
         }
     }
 
-    func showAlert(_ toast: AlertToast) {
+    func showAlert(_ toast: AlertToast, duration: TimeInterval = 4) {
         alertToken += 1
         let token = alertToken
         withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { alert = toast }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
             guard let self, self.alertToken == token else { return }
             withAnimation(.easeInOut(duration: 0.35)) { self.alert = nil }
         }
@@ -263,12 +372,15 @@ final class NotchState: ObservableObject {
         let cal = Calendar.current
         let start = visibleMonth
         let end = cal.date(byAdding: .month, value: 1, to: start) ?? start
-        // Fetch off the main thread so it never janks the expand animation.
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            let month = self.calendar.events(from: start, to: end)
-            let today = self.calendar.todayEvents()
-            DispatchQueue.main.async {
+        // Capture service on MainActor, then query EventKit off-main (store is thread-safe for reads).
+        let service = calendar
+        Task.detached {
+            let month = service.events(from: start, to: end)
+            let today = service.todayEvents()
+            await MainActor.run { [weak self] in
+                // Ignore an older month's response if navigation changed while
+                // EventKit was fetching (including returning to today's month).
+                guard let self, self.visibleMonth == start else { return }
                 if month != self.monthEvents { self.monthEvents = month }
                 if today != self.todayEvents { self.todayEvents = today }
             }
@@ -302,9 +414,9 @@ final class NotchState: ObservableObject {
         }
     }
 
-    func goToToday() {
-        visibleMonth = NotchState.startOfMonth(Date())
-        selectedDate = Calendar.current.startOfDay(for: Date())
+    func goToToday(now: Date = Date()) {
+        visibleMonth = NotchState.startOfMonth(now)
+        selectedDate = Calendar.current.startOfDay(for: now)
         refreshCalendar()
     }
 
@@ -344,7 +456,7 @@ final class NotchState: ObservableObject {
         }
 
         guard !eventConnected.isEmpty else {
-            btDevices = []
+            if !btDevices.isEmpty { btDevices = [] }
             return
         }
 
@@ -353,7 +465,9 @@ final class NotchState: ObservableObject {
                 ?? lastDevices[normalizedAddr]
                 ?? btDevices.first { $0.normalizedAddress == normalizedAddr }
         }
-        btDevices = effective
+        if effective != btDevices {
+            btDevices = effective
+        }
 
         for d in effective {
             guard let pct = d.primaryBattery else { continue }
@@ -411,12 +525,30 @@ final class NotchState: ObservableObject {
         AirDropService.send(urls)
     }
 
+    // MARK: Downloads
+
+    func updateDownloads(_ items: [DownloadItem]) {
+        guard items != downloads else { return }
+        withAnimation(.easeInOut(duration: 0.2)) { downloads = items }
+    }
+
+    func downloadDidFinish(name: String) {
+        showAlert(AlertToast(
+            symbol: "arrow.down.circle.fill",
+            title: "Download Complete",
+            subtitle: name,
+            tint: Color(red: 0.35, green: 0.75, blue: 1.0)
+        ))
+    }
+
     // MARK: Weather
 
     func refreshWeather() {
         WeatherService.fetch { [weak self] info in
             guard let self, let info else { return }
-            self.weather = info
+            if self.weather != info {
+                self.weather = info
+            }
             self.checkRainAlert(info)
         }
     }

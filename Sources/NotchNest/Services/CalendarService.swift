@@ -1,7 +1,7 @@
 import EventKit
 import AppKit
 
-final class CalendarService {
+final class CalendarService: @unchecked Sendable {
     private let store = EKEventStore()
 
     var isAuthorized: Bool {

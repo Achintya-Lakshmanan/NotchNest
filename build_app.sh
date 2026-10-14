@@ -20,13 +20,20 @@ fi
 
 # Sign with a stable identity (Apple Development / Developer ID) so macOS keeps
 # permission grants (Accessibility, etc.) across rebuilds. Falls back to ad-hoc.
+SIGN_OPTIONS=(--force --deep)
+if [ -n "${NOTCHNEST_PROVISIONING_PROFILE:-}" ]; then
+  cp "$NOTCHNEST_PROVISIONING_PROFILE" "$APP/Contents/embedded.provisionprofile"
+  SIGN_OPTIONS+=(--entitlements NotchNest.entitlements)
+else
+  echo "Focus connection disabled: no provisioning profile supplied."
+fi
 IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development|Developer ID/{print $2; exit}')
 if [ -n "$IDENTITY" ]; then
   echo "▸ Signing with identity $IDENTITY"
-  codesign --force --deep --sign "$IDENTITY" "$APP"
+  codesign "${SIGN_OPTIONS[@]}" --sign "$IDENTITY" "$APP"
 else
   echo "▸ Ad-hoc signing (no stable identity found)"
-  codesign --force --deep --sign - "$APP" 2>/dev/null || true
+  codesign "${SIGN_OPTIONS[@]}" --sign - "$APP" 2>/dev/null || true
 fi
 
 echo "✓ Built $(pwd)/$APP"

@@ -30,9 +30,19 @@
     <string>NotchNest shows your events for today in the notch.</string>
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>NotchNest shows your events for today in the notch.</string>
+    <key>NSRemindersFullAccessUsageDescription</key>
+    <string>NotchNest reads your upcoming reminders to show the next one in the calendar panel. It does not change or complete your reminders.</string>
     <key>NSCameraUsageDescription</key>
     <string>NotchNest shows a front-camera mirror in the notch.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>NotchNest detects when Bluetooth devices connect and disconnect.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>NotchNest shows download progress from files in your Downloads folder.</string>
+    <key>NSFocusStatusUsageDescription</key>
+    <string>NotchNest shows a small popup when Focus or Do Not Disturb silences or resumes notifications.</string>
+    <key>INIntentsSupported</key>
+    <array>
+        <string>INShareFocusStatusIntent</string>
+    </array>
 </dict>
 </plist>

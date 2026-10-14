@@ -12,18 +12,42 @@ private let kMute = 7
 /// Requires Accessibility permission for the event tap to be created.
 final class HUDController {
     var onEvent: ((HUDInfo.Kind, Double) -> Void)?
+    var onCapsLockChanged: ((Bool) -> Void)?
+    var brightnessDisplayID: CGDirectDisplayID?
     fileprivate var tap: CFMachPort?
     private var source: CFRunLoopSource?
+    private var runLoop: CFRunLoop?
+
+    var isRunning: Bool { tap != nil }
+
+    /// Suspend interception, not just the drawing: hidden notch UI must leave
+    /// the normal macOS keys/HUD available during mirroring and TV-only use.
+    func stop() {
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        tap = nil
+        if let source, let runLoop {
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
+        }
+        source = nil
+        runLoop = nil
+        brightnessDisplayID = nil
+    }
+
+    deinit { stop() }
 
     /// Returns true if the tap was created (Accessibility granted).
     @discardableResult
     func start(promptForAccess: Bool) -> Bool {
+        if tap != nil { return true }
         if promptForAccess {
             let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
             _ = AXIsProcessTrustedWithOptions(opts)
         }
 
-        let mask = CGEventMask(1 << 14) // NSSystemDefined
+        let mask = CGEventMask((1 << 14) | (1 << CGEventType.flagsChanged.rawValue))
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -38,13 +62,22 @@ final class HUDController {
         self.tap = tap
         let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
         self.source = source
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        let runLoop = CFRunLoopGetCurrent()
+        self.runLoop = runLoop
+        CFRunLoopAddSource(runLoop, source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         return true
     }
 
-    fileprivate func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+    func handle(_ event: CGEvent) -> Unmanaged<CGEvent>? {
         let passthrough = Unmanaged.passUnretained(event)
+        guard isRunning else { return passthrough }
+        if event.type == .flagsChanged {
+            if event.getIntegerValueField(.keyboardEventKeycode) == 57 {
+                onCapsLockChanged?(event.flags.contains(.maskAlphaShift))
+            }
+            return passthrough
+        }
         guard let ns = NSEvent(cgEvent: event), ns.subtype.rawValue == 8 else { return passthrough }
 
         let data1 = ns.data1
@@ -55,18 +88,13 @@ final class HUDController {
 
         switch keyCode {
         case kSoundUp, kSoundDown, kMute:
+            // HDMI outputs often don't expose software volume. Don't swallow
+            // keys and draw a fictitious level for an unsupported TV output.
+            guard AudioOutput.volume() != nil else { return passthrough }
             adjustVolume(keyCode)
             return nil   // consume → no system HUD
         case kBrightnessUp, kBrightnessDown:
-            if BrightnessControl.isAvailable {
-                adjustBrightness(keyCode)
-                return nil
-            }
-            // Can't set brightness ourselves; let the OS do it but mirror a HUD.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                if let b = BrightnessControl.get() { self?.onEvent?(.brightness, Double(b)) }
-            }
-            return passthrough
+            return adjustBrightness(keyCode) ? nil : passthrough
         default:
             return passthrough
         }
@@ -89,13 +117,15 @@ final class HUDController {
         onEvent?(.volume, Double(v))
     }
 
-    private func adjustBrightness(_ keyCode: Int) {
+    private func adjustBrightness(_ keyCode: Int) -> Bool {
+        guard let displayID = brightnessDisplayID,
+              var b = BrightnessControl.get(displayID: displayID) else { return false }
         let step: Float = 1.0 / 16.0
-        var b = BrightnessControl.get() ?? 0.5
         b += (keyCode == kBrightnessUp ? step : -step)
         b = min(max(b, 0), 1)
-        BrightnessControl.set(b)
+        guard BrightnessControl.set(b, displayID: displayID) else { return false }
         onEvent?(.brightness, Double(b))
+        return true
     }
 }
 

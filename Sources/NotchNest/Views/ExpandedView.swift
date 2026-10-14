@@ -10,8 +10,26 @@ struct ExpandedView: View {
         VStack(spacing: 8) {
             topBar
             Divider().overlay(.white.opacity(0.08))
+            // Fixed slot: Color.clear takes exactly the leftover space, and the pane
+            // lives in its overlay so a tall pane can never grow the stack and shift
+            // the top bar (every tab stays pixel-aligned).
+            Color.clear.overlay(alignment: .top) { content }
+                .clipped()
+        }
+        // NotchRootView reserves the black strip behind the camera cutout.
+        .padding(.top, 8)
+        .padding(.horizontal, 22)
+        .padding(.bottom, 14)
+        .foregroundStyle(.white)
+        .onAppear(perform: ensureValidTab)
+        .onChange(of: settings.disabledTabs) { _, _ in ensureValidTab() }
+    }
+
+    private var content: some View {
             Group {
-                if state.showingPreferences {
+                if state.showingMenuBarApps {
+                    MenuBarAppsPane(service: state.menuBarApps, liveRefresh: !state.disableLiveRefresh)
+                } else if state.showingPreferences {
                     SettingsPane()
                 } else {
                     switch state.tab {
@@ -19,20 +37,14 @@ struct ExpandedView: View {
                     case .calendar: CalendarPane()
                     case .weather: WeatherPane()
                     case .timer: TimerPane()
+                    case .codex: AIUsagePane(service: state.codexUsage, claude: state.claudeUsage,
+                                          liveRefresh: !state.disableLiveRefresh)
                     case .mirror: MirrorPane()
                     case .shelf: ShelfPane()
                     }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        // Push content below the physical notch so the tab bar is visible.
-        .padding(.top, max(8, state.metrics.notchHeight))
-        .padding(.horizontal, 22)
-        .padding(.bottom, 14)
-        .foregroundStyle(.white)
-        .onAppear(perform: ensureValidTab)
-        .onChange(of: settings.disabledTabs) { _ in ensureValidTab() }
     }
 
     private func ensureValidTab() {
@@ -42,18 +54,19 @@ struct ExpandedView: View {
     }
 
     private var topBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             TimelineView(.periodic(from: .now, by: 30)) { _ in
-                Text(Self.timeFormatter.string(from: Date()))
+                ViewThatFits(in: .horizontal) {
+                    Text(Self.timeFormatter.string(from: Date())).fixedSize()
+                    Text(Date().formatted(.dateTime.hour().minute())).fixedSize()
+                }
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
                     .monospacedDigit()
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
             // Tab switcher (only enabled tabs)
             HStack(spacing: 4) {
@@ -61,20 +74,38 @@ struct ExpandedView: View {
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             state.showingPreferences = false
+                            state.showingMenuBarApps = false
                             state.tab = tab
                         }
                     } label: {
                         Image(systemName: tab.symbol)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(!state.showingPreferences && state.tab == tab ? .white : .white.opacity(0.45))
-                            .frame(width: 26, height: 20)
-                            .background(!state.showingPreferences && state.tab == tab ? .white.opacity(0.16) : .clear,
+                            .foregroundStyle(!state.showingPreferences && !state.showingMenuBarApps && state.tab == tab ? .white : .white.opacity(0.45))
+                            .frame(width: 24, height: 20)
+                            .background(!state.showingPreferences && !state.showingMenuBarApps && state.tab == tab ? .white.opacity(0.16) : .clear,
                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .buttonStyle(.plain)
+                    .help(tab.rawValue)
+                    .accessibilityLabel(tab.rawValue)
                 }
                 Button {
+                    state.showingPreferences = false
+                    state.showingMenuBarApps.toggle()
+                } label: {
+                    Image(systemName: "menubar.rectangle")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(state.showingMenuBarApps ? .white : .white.opacity(0.45))
+                        .frame(width: 24, height: 20)
+                        .background(state.showingMenuBarApps ? .white.opacity(0.16) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Menu bar apps • Control Option M")
+                .accessibilityLabel("Menu bar apps")
+                Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        state.showingMenuBarApps = false
                         state.showingPreferences.toggle()
                     }
                 } label: {
@@ -88,10 +119,12 @@ struct ExpandedView: View {
                 .buttonStyle(.plain)
                 .help("Preferences")
             }
+            .fixedSize(horizontal: true, vertical: false)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             BatteryCluster()
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 
@@ -108,7 +141,7 @@ struct MusicPane: View {
     @EnvironmentObject var state: NotchState
 
     var body: some View {
-        if let np = state.nowPlaying {
+        if let np = state.displayedNowPlaying {
             HStack(spacing: 18) {
                 ArtworkView(image: state.artwork, title: np.title, size: 116, corner: 18)
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
@@ -132,7 +165,7 @@ struct MusicPane: View {
                         CircleButton(symbol: np.isPlaying ? "pause.fill" : "play.fill", size: 18) { state.togglePlay() }
                         CircleButton(symbol: "forward.fill", size: 15) { state.next() }
                         Spacer()
-                        OutputDeviceMenu()
+                        OutputDeviceMenu(liveRefresh: !state.disableLiveRefresh)
                         Text(np.app.rawValue)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.4))
@@ -423,10 +456,8 @@ struct WeatherPane: View {
 
     var body: some View {
         ZStack {
+            // The sky gradient is drawn full-bleed by NotchRootView.
             if let w = state.weather {
-                LinearGradient(colors: Self.sky(w), startPoint: .top, endPoint: .bottom)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 1) {
@@ -466,7 +497,8 @@ struct WeatherPane: View {
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(16)
+                .padding(.horizontal, 2)
+                .padding(.top, 2)
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "cloud.sun.fill")
@@ -563,7 +595,12 @@ struct CalendarPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { state.refreshCalendar() }
+        // Reopening the notch or returning from another tab starts on today,
+        // rather than retaining the last date browsed in a previous visit.
+        .onAppear { state.goToToday() }
+        .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)) { _ in
+            state.goToToday()
+        }
     }
 }
 
@@ -578,7 +615,7 @@ struct MonthCalendarView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
     var body: some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 4) {
             // Header
             HStack(spacing: 7) {
                 Button { state.changeMonth(by: -1) } label: {
@@ -599,7 +636,7 @@ struct MonthCalendarView: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 22, height: 22)
                         .background(.red, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }.buttonStyle(.plain).help("Today")
             }
@@ -617,7 +654,7 @@ struct MonthCalendarView: View {
             // Day grid
             LazyVGrid(columns: columns, spacing: 1) {
                 ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                    if let day { DayCell(day: day) } else { Color.clear.frame(height: 26) }
+                    if let day { DayCell(day: day) } else { Color.clear.frame(height: 23) }
                 }
             }
             Spacer(minLength: 0)
@@ -650,11 +687,12 @@ struct DayCell: View {
 
     var body: some View {
         Button { state.select(date) } label: {
-            VStack(spacing: 1) {
+            // Compact enough that a six-week month fits the fixed pane height.
+            VStack(spacing: 0) {
                 Text("\(day)")
                     .font(.system(size: 12, weight: isSelected || isToday ? .bold : .regular))
                     .foregroundStyle(foreground)
-                    .frame(width: 24, height: 24)
+                    .frame(width: 20, height: 20)
                     .background(background)
                 Circle()
                     .fill(hasEvents ? Color.white.opacity(0.7) : .clear)
@@ -683,6 +721,7 @@ struct DayCell: View {
 
 struct DayEventsPanel: View {
     @EnvironmentObject var state: NotchState
+    @ObservedObject private var settings = Settings.shared
 
     private static let dayFmt: DateFormatter = {
         let f = DateFormatter(); f.dateFormat = "EEEE, MMM d"; return f
@@ -713,9 +752,13 @@ struct DayEventsPanel: View {
                         }
                     }
                 }
+                .frame(maxHeight: .infinity)
+            }
+            if settings.showCalendarReminder {
+                ReminderCard(service: state.reminders, liveRefresh: !state.disableLiveRefresh)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

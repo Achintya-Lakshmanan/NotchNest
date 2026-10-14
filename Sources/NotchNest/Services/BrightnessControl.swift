@@ -20,13 +20,14 @@ enum BrightnessControl {
 
     static var isAvailable: Bool { getFn != nil && setFn != nil }
 
-    static func get() -> Float? {
+    static func get(displayID: CGDirectDisplayID) -> Float? {
         var value: Float = 0
-        if let getFn, getFn(CGMainDisplayID(), &value) == 0 { return value }
+        if let getFn, getFn(displayID, &value) == 0 { return value }
         return nil
     }
 
-    static func set(_ value: Float) {
-        _ = setFn?(CGMainDisplayID(), min(max(value, 0), 1))
+    @discardableResult
+    static func set(_ value: Float, displayID: CGDirectDisplayID) -> Bool {
+        setFn?(displayID, min(max(value, 0), 1)) == 0
     }
 }
