@@ -148,6 +148,7 @@ enum Snapshot {
 
         renderCodex(metrics: metrics, base: base)
         renderReminders(metrics: metrics, base: base)
+        renderSettings(metrics: metrics, base: base)
         let drawer = NotchState(metrics: metrics, menuBarApps: MenuBarAppsService(preview:
             ["Music", "Calendar", "Notes", "Safari", "Reminders", "Shortcuts"].enumerated().map { index, name in
                 MenuBarAppItem(id: "sample-\(index)", appName: name, label: name,
@@ -158,6 +159,22 @@ enum Snapshot {
         drawer.showingMenuBarApps = true
         render(drawer, size: metrics.expandedSize, to: base.appendingPathComponent("menu_bar_apps.png"))
         return true
+    }
+
+    private static func renderSettings(metrics: NotchMetrics, base: URL) {
+        let original = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        defer { UserDefaults.standard.setVolatileDomain(original, forName: UserDefaults.argumentDomain) }
+        for section in SettingsPane.Section.allCases {
+            var arguments = original
+            arguments["settingsSection"] = section.rawValue
+            UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+            let state = NotchState(metrics: metrics)
+            state.disableLiveRefresh = true
+            state.isExpanded = true
+            state.showingPreferences = true
+            let name = section.rawValue.lowercased().replacingOccurrences(of: " ", with: "_")
+            render(state, size: metrics.expandedSize, to: base.appendingPathComponent("settings_\(name).png"))
+        }
     }
 
     private static func renderCodex(metrics: NotchMetrics, base: URL) {

@@ -42,8 +42,28 @@ final class Settings: ObservableObject {
     @Published var showSystemPopups: Bool {
         didSet { defaults.set(showSystemPopups, forKey: Keys.showSystemPopups) }
     }
+    /// Saved tab order (raw values). Tabs missing from it keep their default place at the end.
+    @Published var tabOrder: [String] {
+        didSet { defaults.set(tabOrder, forKey: Keys.tabOrder) }
+    }
+    /// Providers offered in the usage tab. At least one always stays on.
+    @Published var showCodexUsage: Bool {
+        didSet {
+            defaults.set(showCodexUsage, forKey: Keys.showCodexUsage)
+            if !showCodexUsage, !showClaudeUsage { showClaudeUsage = true }
+        }
+    }
+    @Published var showClaudeUsage: Bool {
+        didSet {
+            defaults.set(showClaudeUsage, forKey: Keys.showClaudeUsage)
+            if !showClaudeUsage, !showCodexUsage { showCodexUsage = true }
+        }
+    }
 
     private enum Keys {
+        static let tabOrder = "tabOrder"
+        static let showCodexUsage = "showCodexUsage"
+        static let showClaudeUsage = "showClaudeUsage"
         static let meeting = "showMeetingCountdown"
         static let disabledTabs = "disabledTabs"
         static let batteryPercentInCompact = "batteryPercentInCompact"
@@ -69,11 +89,40 @@ final class Settings: ObservableObject {
         showDownloadsInCompact = defaults.object(forKey: Keys.showDownloadsInCompact) as? Bool ?? true
         showCalendarReminder = defaults.object(forKey: Keys.showCalendarReminder) as? Bool ?? true
         showSystemPopups = defaults.object(forKey: Keys.showSystemPopups) as? Bool ?? true
+        let codex = defaults.object(forKey: Keys.showCodexUsage) as? Bool ?? true
+        showCodexUsage = codex
+        // Never restore a state with both providers hidden.
+        showClaudeUsage = (defaults.object(forKey: Keys.showClaudeUsage) as? Bool ?? true) || !codex
+        tabOrder = defaults.stringArray(forKey: Keys.tabOrder) ?? []
         launchAtLogin = LoginItem.isEnabled
     }
 
+    var orderedTabs: [NotchTab] { Self.ordered(tabOrder) }
+
     var enabledTabs: [NotchTab] {
-        NotchTab.allCases.filter { !disabledTabs.contains($0.rawValue) }
+        orderedTabs.filter { !disabledTabs.contains($0.rawValue) }
+    }
+
+    /// Saved order first (ignoring unknown or repeated names), then any tab it doesn't mention.
+    nonisolated static func ordered(_ saved: [String]) -> [NotchTab] {
+        var result: [NotchTab] = []
+        for name in saved {
+            if let tab = NotchTab(rawValue: name), !result.contains(tab) { result.append(tab) }
+        }
+        return result + NotchTab.allCases.filter { !result.contains($0) }
+    }
+
+    /// Moves `tab` into the slot currently held by `target`.
+    func moveTab(_ tab: NotchTab, to target: NotchTab) {
+        var tabs = orderedTabs
+        guard tab != target, let from = tabs.firstIndex(of: tab), let to = tabs.firstIndex(of: target) else { return }
+        tabs.remove(at: from)
+        tabs.insert(tab, at: to)
+        tabOrder = tabs.map(\.rawValue)
+    }
+
+    var usageProviders: [String] {
+        (showCodexUsage ? ["Codex"] : []) + (showClaudeUsage ? ["Claude"] : [])
     }
 
     func isEnabled(_ tab: NotchTab) -> Bool { !disabledTabs.contains(tab.rawValue) }

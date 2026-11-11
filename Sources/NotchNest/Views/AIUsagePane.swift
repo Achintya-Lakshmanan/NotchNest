@@ -5,7 +5,14 @@ struct AIUsagePane: View {
     @ObservedObject var claude: ClaudeUsageService
     var liveRefresh = true
     @State private var refreshID = 0
-    @AppStorage("allowanceProvider") private var provider = "Codex"
+    @AppStorage("allowanceProvider") private var storedProvider = "Codex"
+    @ObservedObject private var settings = Settings.shared
+
+    /// The remembered choice, unless that provider is hidden in Preferences.
+    private var provider: String {
+        let shown = settings.usageProviders
+        return shown.contains(storedProvider) ? storedProvider : (shown.first ?? storedProvider)
+    }
 
     private var isClaude: Bool { provider == "Claude" }
     private var usage: WeeklyUsage? { isClaude ? claude.usage : service.usage }
@@ -19,9 +26,16 @@ struct AIUsagePane: View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 7) {
+                    if settings.usageProviders.count < 2 {
+                        Text(provider)
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 11).padding(.vertical, 5)
+                            .background(accent.opacity(0.22), in: Capsule())
+                            .padding(3)
+                    } else {
                     HStack(spacing: 2) {
-                        ForEach(["Codex", "Claude"], id: \.self) { name in
-                            Button { provider = name } label: {
+                        ForEach(settings.usageProviders, id: \.self) { name in
+                            Button { storedProvider = name } label: {
                                 Text(name)
                                     .font(.system(size: 10, weight: .semibold))
                                     .foregroundStyle(provider == name ? .white : .white.opacity(0.45))
@@ -35,6 +49,7 @@ struct AIUsagePane: View {
                     }
                     .padding(3)
                     .background(.white.opacity(0.06), in: Capsule())
+                    }
                     if let plan = usage?.planLabel {
                         Text(plan)
                             .font(.system(size: 9, weight: .semibold))

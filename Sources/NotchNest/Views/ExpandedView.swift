@@ -86,8 +86,8 @@ struct ExpandedView: View {
                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .help(tab.rawValue)
-                    .accessibilityLabel(tab.rawValue)
+                    .help(tab.title)
+                    .accessibilityLabel(tab.title)
                 }
                 Button {
                     state.showingPreferences = false

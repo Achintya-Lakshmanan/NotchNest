@@ -1,135 +1,263 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
+/// Preferences: a category rail on the left, one short grouped list on the right.
 struct SettingsPane: View {
     @ObservedObject var settings = Settings.shared
     @EnvironmentObject var state: NotchState
+    @AppStorage("settingsSection") private var sectionName = Section.general.rawValue
+    @State private var draggedTab: NotchTab?
 
-    var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Preferences")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+    enum Section: String, CaseIterable {
+        case general = "General"
+        case tabs = "Tabs"
+        case notch = "Notch"
 
-                VStack(alignment: .leading, spacing: 8) {
-                    wrappingToggle("Launch at login", isOn: $settings.launchAtLogin)
-                    wrappingToggle("Show meeting countdown in the notch", isOn: $settings.showMeetingCountdown)
-                    wrappingToggle("Show next reminder in Calendar", isOn: $settings.showCalendarReminder)
-                    wrappingToggle("Show download icon in closed notch", isOn: $settings.showDownloadsInCompact)
-                    wrappingToggle("Show Focus and Caps Lock popups", isOn: $settings.showSystemPopups)
-                    if settings.showSystemPopups {
-                        FocusAccessRow(monitor: state.focusMonitor)
-                    }
-                }
-
-                Divider().overlay(.white.opacity(0.08))
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Tabs")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
-                    ForEach(NotchTab.allCases, id: \.self) { tab in
-                        HStack(alignment: .center, spacing: 12) {
-                            Label(tab.rawValue, systemImage: tab.symbol)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.9))
-                                .lineLimit(1)
-                            Spacer(minLength: 8)
-                            Toggle("", isOn: Binding(
-                                get: { settings.isEnabled(tab) },
-                                set: { settings.setTab(tab, enabled: $0) }
-                            ))
-                            .labelsHidden()
-                        }
-                    }
-                }
-
-                Divider().overlay(.white.opacity(0.08))
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Closed notch")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.5))
-                    wrappingToggle("Show % in closed notch", isOn: $settings.batteryPercentInCompact)
-                    wrappingToggle("Show % in expanded view", isOn: $settings.batteryPercentInExpanded)
-
-                    Text("Quiet hours")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                        .padding(.top, 2)
-                    wrappingToggle("Hide closed-notch % during quiet hours", isOn: $settings.batteryCompactSchedule)
-                    wrappingToggle("Hide music in closed notch during quiet hours", isOn: $settings.musicCompactRespectQuietHours)
-                    if settings.batteryCompactSchedule {
-                        HStack(spacing: 10) {
-                            Text("From")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.white.opacity(0.5))
-                            Picker("", selection: $settings.batteryQuietStartHour) {
-                                ForEach(0..<24, id: \.self) { hour in
-                                    Text(Settings.hourLabel(hour)).tag(hour)
-                                }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                            Text("to")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.white.opacity(0.5))
-                            Picker("", selection: $settings.batteryQuietEndHour) {
-                                ForEach(0..<24, id: \.self) { hour in
-                                    Text(Settings.hourLabel(hour)).tag(hour)
-                                }
-                            }
-                            .labelsHidden()
-                            .pickerStyle(.menu)
-                        }
-                        if settings.musicCompactRespectQuietHours {
-                            Text("Music uses the quiet hours above.")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.white.opacity(0.35))
-                        }
-                    } else if settings.musicCompactRespectQuietHours {
-                        Text("Enable quiet hours above to hide music on a schedule.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(.white.opacity(0.35))
-                    }
-                }
-
-                Divider().overlay(.white.opacity(0.08))
-
-                HStack {
-                    Text("NotchNest 1.0")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.35))
-                    Spacer()
-                    Button("Quit NotchNest") { NSApp.terminate(nil) }
-                        .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(.white.opacity(0.12), in: Capsule())
-                }
+        var symbol: String {
+            switch self {
+            case .general: return "gearshape"
+            case .tabs: return "square.grid.2x2"
+            case .notch: return "rectangle.topthird.inset.filled"
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 2)
         }
-        .toggleStyle(.switch)
-        .tint(.white.opacity(0.55))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func wrappingToggle(_ title: String, isOn: Binding<Bool>) -> some View {
+    private var section: Section { Section(rawValue: sectionName) ?? .general }
+
+    var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Text(title)
-                .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.9))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            Toggle("", isOn: isOn)
-                .labelsHidden()
+            rail
+            Rectangle().fill(.white.opacity(0.08)).frame(width: 1)
+            ScrollView(showsIndicators: false) {
+                Group {
+                    switch section {
+                    case .general: general
+                    case .tabs: tabs
+                    case .notch: notch
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(.vertical, 1)
+            }
         }
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .tint(.green)
+        .padding(.top, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    // MARK: Rail
+
+    private var rail: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Section.allCases, id: \.self) { item in
+                Button { sectionName = item.rawValue } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: item.symbol)
+                            .font(.system(size: 11, weight: .medium))
+                            .frame(width: 15)
+                        Text(item.rawValue)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(section == item ? .white : .white.opacity(0.55))
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(section == item ? .white.opacity(0.13) : .clear,
+                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(section == item ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+            Button { NSApp.terminate(nil) } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "power").font(.system(size: 10, weight: .semibold)).frame(width: 15)
+                    Text("Quit").font(.system(size: 11.5, weight: .medium))
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.white.opacity(0.55))
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Quit NotchNest")
+            Text("NotchNest 1.0")
+                .font(.system(size: 9))
+                .foregroundStyle(.white.opacity(0.3))
+                .padding(.horizontal, 8)
+        }
+        .frame(width: 122)
+    }
+
+    // MARK: Sections
+
+    private var general: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            card {
+                row("Launch at login", isOn: $settings.launchAtLogin)
+                line
+                row("Meeting countdown in the notch", isOn: $settings.showMeetingCountdown)
+                line
+                row("Next reminder in Calendar", isOn: $settings.showCalendarReminder)
+                line
+                row("Focus and Caps Lock popups", isOn: $settings.showSystemPopups)
+            }
+            if settings.showSystemPopups {
+                FocusAccessRow(monitor: state.focusMonitor).padding(.horizontal, 4)
+            }
+        }
+    }
+
+    private var tabs: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            caption("Shown in the notch · drag to reorder")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
+                ForEach(settings.orderedTabs, id: \.self) { tab in
+                    // Not a Button: a button would swallow the mouse-down that starts a drag.
+                    chipLabel(tab.title, symbol: tab.symbol, isOn: settings.isEnabled(tab))
+                        .onTapGesture { settings.setTab(tab, enabled: !settings.isEnabled(tab)) }
+                        .onDrag {
+                            draggedTab = tab
+                            return NSItemProvider(object: tab.rawValue as NSString)
+                        }
+                        .onDrop(of: [.text], delegate: TabDropDelegate(target: tab, dragged: $draggedTab,
+                                                                       settings: settings))
+                        .accessibilityLabel(tab.title)
+                        .accessibilityValue(settings.isEnabled(tab) ? "On" : "Off")
+                        .accessibilityAddTraits(.isButton)
+                }
+            }
+            caption("Usage tab shows").padding(.top, 2)
+            HStack(spacing: 6) {
+                chip("Codex", symbol: "terminal", isOn: settings.showCodexUsage) {
+                    settings.showCodexUsage.toggle()
+                }
+                chip("Claude", symbol: "sparkle", isOn: settings.showClaudeUsage) {
+                    settings.showClaudeUsage.toggle()
+                }
+            }
+            .frame(width: 190)
+        }
+    }
+
+    private var notch: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            card {
+                row("Download icon", isOn: $settings.showDownloadsInCompact)
+                line
+                row("Battery % when closed", isOn: $settings.batteryPercentInCompact)
+                line
+                row("Battery % when open", isOn: $settings.batteryPercentInExpanded)
+            }
+            card {
+                row("Quiet hours", isOn: $settings.batteryCompactSchedule)
+                if settings.batteryCompactSchedule {
+                    line
+                    HStack(spacing: 6) {
+                        Text("From").font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.9))
+                        Spacer(minLength: 4)
+                        hourPicker($settings.batteryQuietStartHour)
+                        Text("to").font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
+                        hourPicker($settings.batteryQuietEndHour)
+                    }
+                    .padding(.horizontal, 10).frame(height: 28)
+                    line
+                    row("Also hide music", isOn: $settings.musicCompactRespectQuietHours)
+                }
+            }
+            if settings.batteryCompactSchedule {
+                Text("During quiet hours the closed notch hides the battery %.")
+                    .font(.system(size: 9.5)).foregroundStyle(.white.opacity(0.4))
+                    .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    // MARK: Pieces
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var line: some View {
+        Rectangle().fill(.white.opacity(0.07)).frame(height: 1).padding(.leading, 10)
+    }
+
+    private func row(_ title: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .font(.system(size: 11.5))
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Toggle(title, isOn: isOn).labelsHidden()
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 28)
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 8.5, weight: .bold)).tracking(0.7)
+            .foregroundStyle(.white.opacity(0.4))
+            .padding(.horizontal, 2)
+    }
+
+    private func chipLabel(_ title: String, symbol: String, isOn: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 10, weight: .semibold))
+            Text(title).font(.system(size: 10.5, weight: .medium)).lineLimit(1)
+        }
+        .foregroundStyle(isOn ? .white : .white.opacity(0.35))
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .background(isOn ? .white.opacity(0.16) : .white.opacity(0.04),
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    private func chip(_ title: String, symbol: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) { chipLabel(title, symbol: symbol, isOn: isOn) }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "On" : "Off")
+    }
+
+    private func hourPicker(_ selection: Binding<Int>) -> some View {
+        Picker("", selection: selection) {
+            ForEach(0..<24, id: \.self) { hour in
+                Text(Settings.hourLabel(hour)).tag(hour)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .fixedSize()
+    }
+}
+
+/// Reorders live as the dragged chip passes over another one.
+private struct TabDropDelegate: DropDelegate {
+    let target: NotchTab
+    @Binding var dragged: NotchTab?
+    let settings: Settings
+
+    func dropEntered(info: DropInfo) {
+        guard let dragged, dragged != target else { return }
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+            settings.moveTab(dragged, to: target)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragged = nil
+        return true
     }
 }
 

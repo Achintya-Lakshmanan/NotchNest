@@ -145,13 +145,16 @@ enum NotchTab: String, CaseIterable {
     case mirror = "Mirror"
     case shelf = "Shelf"
 
+    /// Display name. The raw value stays "Codex" because saved preferences use it.
+    var title: String { self == .codex ? "AI Usage" : rawValue }
+
     var symbol: String {
         switch self {
         case .music: return "music.note"
         case .calendar: return "calendar"
         case .weather: return "cloud.sun.fill"
         case .timer: return "timer"
-        case .codex: return "chevron.left.forwardslash.chevron.right"
+        case .codex: return "chart.bar.fill"
         case .mirror: return "camera.fill"
         case .shelf: return "tray.full"
         }

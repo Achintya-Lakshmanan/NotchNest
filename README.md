@@ -23,7 +23,7 @@ The other tabs cover a few everyday jobs.
 
 - Weather shows State College conditions, an hourly forecast and rain chances.
 - Timer has 1, 5, 10 and 25-minute presets, with a countdown around the notch.
-- The Codex tab switches between Codex and Claude weekly allowance, reset time
+- The AI Usage tab switches between Codex and Claude weekly allowance, reset time
   and subscription tier, plus the rolling 5-hour limit and when it resets. Codex uses its existing sign-in. Claude needs a separate
   one-time connection through the Connect Claude button.
 - Shelf holds files you drag in and lets you send them through AirDrop.
