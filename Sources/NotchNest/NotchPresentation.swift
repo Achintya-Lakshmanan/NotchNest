@@ -23,7 +23,8 @@ final class NotchPresentation {
     private let shortcut = MenuBarShortcut()
 
     init(state: NotchState, pointerLocation: @escaping () -> CGPoint = { NSEvent.mouseLocation },
-         closeDelay: TimeInterval = 0.24, debug: Bool = false) {
+         closeDelay: TimeInterval = 0.24, debug: Bool = false, installsGlobalMonitors: Bool = true) {
+        self.installsGlobalMonitors = installsGlobalMonitors
         self.state = state
         self.pointerLocation = pointerLocation
         self.closeDelay = closeDelay
@@ -194,13 +195,22 @@ final class NotchPresentation {
         }
     }
 
+    /// Tests drive `pointerMoved` directly; real system-wide monitors would let
+    /// the physical mouse change their outcome.
+    private let installsGlobalMonitors: Bool
+    /// Drag pasteboard generation at the last mouse-down. A drag whose pasteboard
+    /// changed since then is drag-and-drop (files to stash); otherwise it's a
+    /// window move or text selection and must not pop the notch open.
+    private var dragChangeCountAtMouseDown = NSPasteboard(name: .drag).changeCount
+
     private func installPointerMonitors() {
-        guard globalMonitor == nil, localMonitor == nil else { return }
+        guard installsGlobalMonitors, globalMonitor == nil, localMonitor == nil else { return }
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .leftMouseDown, .rightMouseDown]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
             let click = event.type == .leftMouseDown || event.type == .rightMouseDown
+            let dragged = event.type == .leftMouseDragged || event.type == .rightMouseDragged
             let point = NSEvent.mouseLocation
-            Task { @MainActor in self?.pointerEvent(at: point, isClick: click) }
+            Task { @MainActor in self?.pointerEvent(at: point, isClick: click, isDrag: dragged) }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
             let click = event.type == .leftMouseDown || event.type == .rightMouseDown
@@ -210,7 +220,12 @@ final class NotchPresentation {
         }
     }
 
-    private func pointerEvent(at point: CGPoint, isClick: Bool) {
+    private func pointerEvent(at point: CGPoint, isClick: Bool, isDrag: Bool = false) {
+        if isClick { dragChangeCountAtMouseDown = NSPasteboard(name: .drag).changeCount }
+        if isDrag, !state.isExpanded,
+           NSPasteboard(name: .drag).changeCount == dragChangeCountAtMouseDown {
+            return
+        }
         if isClick, state.showingMenuBarApps, trackingMenus.isEmpty,
            !state.metrics.containsHover(point, presentedFrame: panel.frame) {
             close()
@@ -243,7 +258,7 @@ final class NotchPresentation {
                 self.panel.orderFrontRegardless()
                 if !opened {
                     self.state.showAlert(AlertToast(symbol: "menubar.rectangle", title: "Menu unavailable",
-                        subtitle: "\(item.appName) didn't allow its menu to open. Try its app or Refresh.", tint: .orange))
+                        subtitle: "\(item.appName) didn't allow its menu to open. Try its app or Refresh.", tint: .orange), key: "menu", maxWait: 10)
                 }
                 // Recover even if the mouse never emits another enter event.
                 self.checkPointer()

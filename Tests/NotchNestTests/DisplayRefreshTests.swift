@@ -25,7 +25,7 @@ final class DisplayRefreshTests: XCTestCase {
         refresh.refresh(displaysAsleep: false)
         XCTAssertNil(refresh.target)
         source = laptop
-        try await Task.sleep(for: .milliseconds(40))
+        try await waitUntil { changes == [nil, self.laptop] }
         XCTAssertEqual(changes, [nil, laptop])
         XCTAssertEqual(refresh.target, laptop)
     }
@@ -37,7 +37,7 @@ final class DisplayRefreshTests: XCTestCase {
         refresh.refresh(displaysAsleep: false)
         try await Task.sleep(for: .milliseconds(30))
         source = laptop
-        try await Task.sleep(for: .milliseconds(50))
+        try await waitUntil { changes == [nil, self.laptop] }
         XCTAssertEqual(changes, [nil, laptop])
         XCTAssertEqual(refresh.target, laptop)
     }
@@ -46,11 +46,19 @@ final class DisplayRefreshTests: XCTestCase {
         var changes: [NotchDisplayTarget?] = []
         let refresh = DisplayRefresh(target: laptop, source: { self.laptop }, settleDelay: 0.01) { changes.append($0) }
         refresh.refresh(displaysAsleep: true)
-        try await Task.sleep(for: .milliseconds(30))
+        try await waitUntil { changes == [nil] }
         XCTAssertEqual(changes, [nil])
         refresh.refresh(displaysAsleep: false)
-        try await Task.sleep(for: .milliseconds(30))
+        try await waitUntil { changes == [nil, self.laptop] }
         XCTAssertEqual(changes, [nil, laptop])
+    }
+
+    /// Polls instead of a fixed sleep, so a busy machine can't fail the test.
+    private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
     }
 
     func testUnavailableDisplayRetriesAreBounded() async throws {
@@ -58,9 +66,10 @@ final class DisplayRefreshTests: XCTestCase {
         let refresh = DisplayRefresh(target: laptop, source: { reads += 1; return nil },
                                      settleDelay: 0.01, maxAttempts: 3) { _ in }
         refresh.refresh(displaysAsleep: false)
-        try await Task.sleep(for: .milliseconds(70))
+        try await waitUntil { reads >= 4 }
         XCTAssertEqual(reads, 4)
-        try await Task.sleep(for: .milliseconds(40))
+        // A fixed wait is right here: we're checking that nothing more happens.
+        try await Task.sleep(for: .milliseconds(60))
         XCTAssertEqual(reads, 4, "No permanent polling while the built-in screen is unavailable")
         XCTAssertNil(refresh.target)
     }

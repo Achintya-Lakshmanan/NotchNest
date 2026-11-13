@@ -46,6 +46,18 @@ final class Settings: ObservableObject {
     @Published var tabOrder: [String] {
         didSet { defaults.set(tabOrder, forKey: Keys.tabOrder) }
     }
+    /// Calendar identifiers NotchNest ignores everywhere (grid, class mode, deadlines).
+    @Published var hiddenCalendars: Set<String> {
+        didSet { defaults.set(Array(hiddenCalendars), forKey: Keys.hiddenCalendars) }
+    }
+    /// Lyrics come from LRCLIB (Apple Music has no lyrics API). Off = the button
+    /// is hidden and nothing is ever sent to the lyrics service.
+    @Published var lyricsEnabled: Bool {
+        didSet { defaults.set(lyricsEnabled, forKey: Keys.lyricsEnabled) }
+    }
+    @Published var claudeLimitAlerts: Bool {
+        didSet { defaults.set(claudeLimitAlerts, forKey: Keys.claudeLimitAlerts) }
+    }
     /// Providers offered in the usage tab. At least one always stays on.
     @Published var showCodexUsage: Bool {
         didSet {
@@ -61,6 +73,9 @@ final class Settings: ObservableObject {
     }
 
     private enum Keys {
+        static let hiddenCalendars = "hiddenCalendars"
+        static let claudeLimitAlerts = "claudeLimitAlerts"
+        static let lyricsEnabled = "lyricsEnabled"
         static let tabOrder = "tabOrder"
         static let showCodexUsage = "showCodexUsage"
         static let showClaudeUsage = "showClaudeUsage"
@@ -93,6 +108,9 @@ final class Settings: ObservableObject {
         showCodexUsage = codex
         // Never restore a state with both providers hidden.
         showClaudeUsage = (defaults.object(forKey: Keys.showClaudeUsage) as? Bool ?? true) || !codex
+        hiddenCalendars = Set(defaults.stringArray(forKey: Keys.hiddenCalendars) ?? [])
+        claudeLimitAlerts = defaults.object(forKey: Keys.claudeLimitAlerts) as? Bool ?? true
+        lyricsEnabled = defaults.object(forKey: Keys.lyricsEnabled) as? Bool ?? true
         tabOrder = defaults.stringArray(forKey: Keys.tabOrder) ?? []
         launchAtLogin = LoginItem.isEnabled
     }

@@ -260,7 +260,7 @@ struct BTPopupCard: View {
     private var device: BTDevice { toast.device }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             ZStack(alignment: .bottomTrailing) {
                 Image(systemName: device.symbol)
                     .font(.system(size: 30, weight: .regular))
@@ -277,14 +277,14 @@ struct BTPopupCard: View {
             }
             .frame(width: 44)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(toast.title)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                 Text(toast.subtitle)
-                    .font(.system(size: 10, weight: toast.isAlert ? .semibold : .regular))
-                    .foregroundStyle(toast.isAlert ? .yellow : .white.opacity(0.5))
+                    .font(.system(size: 11, weight: toast.isAlert ? .semibold : .regular))
+                    .foregroundStyle(toast.isAlert ? .yellow : .white.opacity(0.6))
 
                 if toast.showsDeviceBattery {
                     HStack(spacing: 8) {
@@ -324,10 +324,12 @@ struct BatteryPill: View {
 
     var body: some View {
         HStack(spacing: 3) {
+            // Label always shows ("Mac", "L", "Case"); a symbol (charging bolt) adds to it.
+            if !label.isEmpty, label != "Case" || symbol == nil {
+                Text(label).font(.system(size: 9, weight: .bold))
+            }
             if let symbol {
                 Image(systemName: symbol).font(.system(size: 9, weight: .bold))
-            } else if !label.isEmpty {
-                Text(label).font(.system(size: 9, weight: .bold))
             }
             Text("\(pct)%")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
@@ -354,9 +356,11 @@ struct AlertCard: View {
                 Text(toast.title)
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
                 Text(toast.subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(2)
             }
             Spacer(minLength: 0)
         }
@@ -370,6 +374,9 @@ struct AlertCard: View {
 struct BatteryCluster: View {
     @EnvironmentObject var state: NotchState
     @ObservedObject private var settings = Settings.shared
+    /// The header drops these first when space is tight; both stay in the tooltip.
+    var showETA = true
+    var showAccessory = true
 
     private var btDevice: BTDevice? {
         state.btDevices.first(where: { $0.hasAnyBattery })
@@ -378,7 +385,7 @@ struct BatteryCluster: View {
     var body: some View {
         HStack(spacing: 8) {
             // Both batteries when expanded: AirPods (if connected) + Mac.
-            if let dev = btDevice, let pct = dev.primaryBattery {
+            if showAccessory, let dev = btDevice, let pct = dev.primaryBattery {
                 HStack(spacing: 4) {
                     Image(systemName: dev.symbol)
                         .font(.system(size: 11, weight: .medium))
@@ -396,6 +403,15 @@ struct BatteryCluster: View {
 
             macBattery
         }
+        .fixedSize()
+        .help(tooltip)
+    }
+
+    private var tooltip: String {
+        var parts = ["Mac \(state.battery.percent)%" + (state.battery.isCharging ? " (charging)" : "")]
+        if let mins = state.battery.minutesTo80 { parts.append("\(mins) min to 80%") }
+        if let dev = btDevice, let pct = dev.primaryBattery { parts.append("\(dev.name) \(pct)%") }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder private var macBattery: some View {
@@ -403,7 +419,7 @@ struct BatteryCluster: View {
             HStack(spacing: 5) {
                 if settings.batteryPercentInExpanded {
                     chargingLabel
-                } else if let mins = state.battery.minutesTo80 {
+                } else if showETA, let mins = state.battery.minutesTo80 {
                     Text("\(mins)m → 80%")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.4))
@@ -424,7 +440,7 @@ struct BatteryCluster: View {
             .foregroundStyle(.green)
             .monospacedDigit()
 
-        if let mins = state.battery.minutesTo80 {
+        if showETA, let mins = state.battery.minutesTo80 {
             (percent + Text(" · \(mins)m → 80%")
                 .font(.system(size: 9, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.4))
@@ -504,32 +520,77 @@ struct TimerPill: View {
 
 // MARK: - Meeting countdown pill (collapsed notch)
 
+/// Class mode: before an event, "in 12m"; during it, a ring filling with the
+/// class's progress and the time left. When the right wing is free the pill
+/// splits across both wings (`.indicator` left, `.time` right) to stay balanced.
 struct MeetingPill: View {
+    enum Part { case combined, indicator, time }
     let event: CalEvent
+    var part: Part = .combined
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 20)) { _ in
+        TimelineView(.periodic(from: .now, by: 15)) { context in
+            let now = context.date
             HStack(spacing: 4) {
-                Circle()
-                    .fill(isNow ? Color.green : event.color)
-                    .frame(width: 6, height: 6)
-                Text(label)
-                    .font(.system(size: 10, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
+                if part != .time { indicator(now: now) }
+                if part != .indicator {
+                    // The ring already says "live", so the wing only needs "45m" / "in 12m".
+                    Text(Self.shortLabel(event, at: now))
+                        .font(.system(size: part == .time ? 11 : 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(event.start <= now ? .white : .white.opacity(0.75))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
+                }
             }
+            .help(event.location.map { "\(event.title) · \($0)" } ?? event.title)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(event.title), \(Self.label(event, at: now))")
         }
     }
 
-    private var isNow: Bool {
-        let now = Date(); return event.start <= now && event.end > now
+    @ViewBuilder private func indicator(now: Date) -> some View {
+        let size: CGFloat = part == .indicator ? 12 : 9
+        if event.start <= now && event.end > now {
+            ZStack {
+                Circle().stroke(.white.opacity(0.18), lineWidth: 1.8)
+                Circle()
+                    .trim(from: 0, to: Self.progress(event, at: now))
+                    .stroke(Color.green, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: size, height: size)
+        } else {
+            // Not started yet: an outlined ring in the calendar's colour.
+            Circle().stroke(event.color, lineWidth: 1.8)
+                .frame(width: size - 2, height: size - 2)
+                .frame(width: size, height: size)
+        }
     }
 
-    private var label: String {
-        if isNow { return "Now" }
-        let mins = Int(ceil(event.start.timeIntervalSinceNow / 60))
-        if mins < 60 { return "\(mins)m" }
-        return "\(mins / 60)h"
+    /// The right-wing text: "12m" left (live, beside a progress ring) or "in 52m" (upcoming).
+    static func shortLabel(_ event: CalEvent, at now: Date) -> String {
+        let live = event.start <= now
+        let target = live ? event.end : event.start
+        let mins = max(1, Int(ceil(target.timeIntervalSince(now) / 60)))
+        let text = mins < 60 ? "\(mins)m" : "\(mins / 60)h\(String(format: "%02d", mins % 60))m"
+        return live ? text : "in \(text)"
+    }
+
+    static func progress(_ event: CalEvent, at now: Date) -> Double {
+        let total = event.end.timeIntervalSince(event.start)
+        guard total > 0 else { return 1 }
+        return min(1, max(0, now.timeIntervalSince(event.start) / total))
+    }
+
+    static func label(_ event: CalEvent, at now: Date) -> String {
+        if event.start <= now {
+            let left = max(1, Int(ceil(event.end.timeIntervalSince(now) / 60)))
+            // The wing is ~50pt wide: "1h15m" fits where "1h 15m left" would not.
+            return left < 60 ? "\(left)m left" : "\(left / 60)h\(String(format: "%02d", left % 60))m"
+        }
+        let mins = max(1, Int(ceil(event.start.timeIntervalSince(now) / 60)))
+        return mins < 60 ? "in \(mins)m" : "in \(mins / 60)h"
     }
 }
 
@@ -562,6 +623,10 @@ struct OutputDeviceMenu: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+        // Same circular chip as the heart and lyrics buttons beside it.
+        .frame(width: 28, height: 28)
+        .background(.white.opacity(0.08), in: Circle())
+        .help("Audio output")
         .onAppear { if liveRefresh { refresh() } }
     }
 

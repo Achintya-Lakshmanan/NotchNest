@@ -66,12 +66,30 @@ final class ClaudeUsageService: ObservableObject {
 
     func connect() { client.showConnection() }
 
-    /// Only the selected, visible pane refreshes. No model calls or background polling.
+    /// True once the user chose Connect Claude (and the sign-in hasn't been rejected since).
+    var isConnected: Bool { UserDefaults.standard.bool(forKey: ClaudeWebUsageClient.connectionKey) }
+
+    /// How often the background limit check fetches: every 10 minutes on power,
+    /// every 30 on battery. A nearly used five-hour window can run out within one
+    /// of those gaps, so at or below 30% the gap halves (5 min / 15 min), and at or
+    /// below 15% it's 5 minutes either way so the 10% popup isn't missed. Both last
+    /// at most until the window resets; a low *weekly* allowance can last for days,
+    /// so it doesn't speed anything up.
+    nonisolated static func backgroundInterval(for usage: WeeklyUsage?, pluggedIn: Bool, now: Date = Date()) -> TimeInterval {
+        let base: TimeInterval = pluggedIn ? 600 : 1800
+        guard let session = usage?.session, !session.resetIsDue(at: now) else { return base }
+        if session.remainingPercent <= 15 { return 300 }
+        if session.remainingPercent <= 30 { return base / 2 }
+        return base
+    }
+
+    /// Refreshes run while the Claude pane is visible, plus a throttled background
+    /// check for limit alerts (NotchController). Never makes model calls.
     func refresh(force: Bool = false, now: Date = Date()) async {
         guard !isLoading, !Task.isCancelled else { return }
         if !force {
             if let lastAttempt, now.timeIntervalSince(lastAttempt) < (message == nil ? 60 : 300) { return }
-            if message == nil, let usage, now.timeIntervalSince(usage.fetchedAt) < 300,
+            if message == nil, let usage, now.timeIntervalSince(usage.fetchedAt) < 240,
                !usage.resetIsDue(at: now) { return }
         }
         lastAttempt = now
@@ -102,7 +120,8 @@ private final class ClaudeWebUsageClient: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
     private let usageURL = URL(string: "https://claude.ai/settings/usage")!
-    private let connectionKey = "claudeWebConnectionStarted"
+    static let connectionKey = "claudeWebConnectionStarted"
+    private var connectionKey: String { Self.connectionKey }
 
     private func browser() -> WKWebView {
         if let webView { return webView }

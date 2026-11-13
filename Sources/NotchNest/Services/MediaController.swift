@@ -2,7 +2,10 @@ import AppKit
 
 /// Talks to Apple Music and Spotify via AppleScript. First use will prompt
 /// for Automation permission per app (System Settings ▸ Privacy ▸ Automation).
-final class MediaController {
+/// Every AppleScript call and all mutable state (the lazily compiled scripts)
+/// are confined to `queue`, a serial queue, which is what makes this Sendable.
+/// Apple Events can block for seconds, so they deliberately stay off the main thread.
+final class MediaController: @unchecked Sendable {
     private let queue = DispatchQueue(label: "notchnest.media", qos: .userInitiated)
 
     /// Compiled once — compiling NSAppleScript on every 2s poll is wasteful.
@@ -25,7 +28,16 @@ final class MediaController {
             try
               set t to current track
               set out to (name of t) & "\\n" & (artist of t) & "\\n" & (album of t) & "\\n" & (player state as string) & "\\n" & (player position as string) & "\\n" & (duration of t) & "\\n"
-              return out
+              -- Music calls the heart "favorited" (macOS 14+); older builds used "loved".
+              set fav to ""
+              try
+                set fav to (favorited of t) as string
+              on error
+                try
+                  set fav to (loved of t) as string
+                end try
+              end try
+              return out & "\\n" & fav
             on error
               return ""
             end try
@@ -58,7 +70,7 @@ final class MediaController {
 
     // MARK: Fetch
 
-    func fetch(completion: @escaping (NowPlaying?) -> Void) {
+    func fetch(completion: @escaping @MainActor @Sendable (NowPlaying?) -> Void) {
         queue.async {
             var result: NowPlaying?
             // Check both; a "playing" one wins over a merely-running one.
@@ -95,13 +107,40 @@ final class MediaController {
             isPlaying: state.contains("playing"),
             elapsed: elapsed,
             duration: duration,
-            artworkURL: (art?.isEmpty == false) ? art : nil
+            artworkURL: (art?.isEmpty == false) ? art : nil,
+            isFavorited: app == .music && parts.count >= 8 ? Self.bool(parts[7]) : nil
         )
+    }
+
+    private static func bool(_ value: String) -> Bool? {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "true": return true
+        case "false": return false
+        default: return nil
+        }
+    }
+
+    /// Hearts (favourites) the current Apple Music track.
+    func setFavorite(_ favorite: Bool) {
+        let value = favorite ? "true" : "false"
+        queue.async {
+            _ = self.runSource("""
+                tell application "Music"
+                  try
+                    set favorited of current track to \(value)
+                  on error
+                    try
+                      set loved of current track to \(value)
+                    end try
+                  end try
+                end tell
+                """)
+        }
     }
 
     // MARK: Apple Music artwork (raw image data)
 
-    func fetchMusicArtwork(completion: @escaping (NSImage?) -> Void) {
+    func fetchMusicArtwork(completion: @escaping @MainActor @Sendable (NSImage?) -> Void) {
         queue.async {
             var image: NSImage?
             if let script = self.musicArtworkScript {

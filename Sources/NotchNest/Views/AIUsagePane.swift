@@ -66,7 +66,9 @@ struct AIUsagePane: View {
                     if isClaude, usage != nil {
                         Button { claude.connect() } label: {
                             Image(systemName: "person.crop.circle")
-                                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                                .font(.system(size: 11, weight: .semibold))
+                                .frame(width: 25, height: 23)
+                                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
                         }
                         .buttonStyle(.plain)
                         .disabled(!liveRefresh)
@@ -88,6 +90,8 @@ struct AIUsagePane: View {
                     usageCard(usage, now: context.date)
                     if let session = usage.session {
                         sessionRow(session, now: context.date)
+                    } else {
+                        noSessionRow
                     }
                     HStack(spacing: 5) {
                         Circle().fill(message == nil ? accent : .orange).frame(width: 4, height: 4)
@@ -101,8 +105,17 @@ struct AIUsagePane: View {
                             .font(.system(size: 25, weight: .light)).foregroundStyle(accent)
                         Text(isLoading ? "Checking your weekly allowance…" : "Connect your \(provider) allowance")
                             .font(.system(size: 12, weight: .semibold))
-                        Text(message ?? (isClaude ? "Sign in once. Only your plan and usage limits are read."
-                                                    : "Uses your existing Codex sign-in. No API key needed."))
+                        Group {
+                            if let message {
+                                Text(message)
+                            } else if isClaude {
+                                Text("Sign in once. Only your plan and usage limits are read.")
+                            } else {
+                                Text("Sign in to the Codex app (or run ")
+                                    + Text("codex login").font(.system(size: 10, design: .monospaced))
+                                    + Text("), then retry. No API key needed.")
+                            }
+                        }
                             .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
                             .multilineTextAlignment(.center)
                         if isClaude {
@@ -113,6 +126,14 @@ struct AIUsagePane: View {
                                 .background(accent.opacity(0.18), in: Capsule())
                                 .foregroundStyle(accent)
                                 .disabled(!liveRefresh)
+                        } else if !isLoading {
+                            Button("Retry") { refreshID += 1 }
+                                .font(.system(size: 10, weight: .semibold))
+                                .buttonStyle(.plain)
+                                .padding(.horizontal, 14).padding(.vertical, 6)
+                                .background(accent.opacity(0.18), in: Capsule())
+                                .foregroundStyle(accent)
+                                .allowsHitTesting(liveRefresh)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -140,26 +161,39 @@ struct AIUsagePane: View {
 
     private func usageCard(_ usage: WeeklyUsage, now: Date) -> some View {
         let expired = usage.resetIsDue(at: now)
-        let tint: Color = usage.remainingPercent <= 10 ? .orange : accent
+        let tint: Color = expired ? .white.opacity(0.45) : (usage.remainingPercent <= 10 ? .orange : accent)
         return HStack(spacing: 18) {
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .firstTextBaseline, spacing: 7) {
-                    Text(expired ? "—" : usage.remainingLabel)
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .monospacedDigit().foregroundStyle(tint)
-                    Text(expired ? "reset due" : "left")
-                        .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.6))
-                }
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(.white.opacity(0.10))
-                        Capsule().fill(LinearGradient(colors: [tint.opacity(0.6), tint],
-                                                     startPoint: .leading, endPoint: .trailing))
-                            .frame(width: expired ? 0 : geometry.size.width * usage.remainingPercent / 100)
+                if expired {
+                    // A value we no longer trust: show work in progress, not a fake number.
+                    HStack(spacing: 9) {
+                        ProgressView().controlSize(.small)
+                        Text("Resetting")
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.75))
+                    }
+                    .frame(height: 41, alignment: .leading)
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 7) {
+                        Text(usage.remainingLabel)
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .monospacedDigit().foregroundStyle(tint)
+                        Text("left")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(.white.opacity(0.6))
                     }
                 }
-                .frame(height: 7)
-                Text(expired ? "Waiting for fresh usage" : "of your weekly allowance")
+                if !expired {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(.white.opacity(0.10))
+                            Capsule().fill(LinearGradient(colors: [tint.opacity(0.6), tint],
+                                                         startPoint: .leading, endPoint: .trailing))
+                                .frame(width: geometry.size.width * usage.remainingPercent / 100)
+                        }
+                    }
+                    .frame(height: 7)
+                }
+                Text(expired ? "Your weekly allowance is refilling" : "of your weekly allowance")
                     .font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,13 +201,17 @@ struct AIUsagePane: View {
             Rectangle().fill(.white.opacity(0.09)).frame(width: 1, height: 60)
 
             VStack(alignment: .leading, spacing: 7) {
-                Label("RESETS IN", systemImage: "clock.arrow.circlepath")
+                Label(expired ? "RESET AT" : "RESETS IN", systemImage: "clock.arrow.circlepath")
                     .font(.system(size: 8, weight: .bold)).tracking(0.8)
                     .foregroundStyle(.white.opacity(0.45))
-                Text(usage.countdown(at: now))
+                Text(expired ? (usage.resetsAt?.formatted(date: .omitted, time: .shortened) ?? "—")
+                             : usage.countdown(at: now))
                     .font(.system(size: 23, weight: .semibold, design: .rounded))
                     .monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                if let reset = usage.resetsAt {
+                if expired {
+                    Text("Today")
+                        .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+                } else if let reset = usage.resetsAt {
                     Text(reset.formatted(.dateTime.weekday(.abbreviated).hour().minute()))
                         .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
                         .lineLimit(1)
@@ -230,9 +268,25 @@ struct AIUsagePane: View {
         .accessibilityLabel("Five-hour limit: \(expired ? "100%" : session.remainingLabel) left. \(resetText)")
     }
 
+    /// Keeps the layout steady when a provider or plan has no five-hour window.
+    private var noSessionRow: some View {
+        HStack(spacing: 10) {
+            Label("5-HOUR", systemImage: "hourglass")
+                .font(.system(size: 8, weight: .bold)).tracking(0.8)
+                .foregroundStyle(.white.opacity(0.45))
+                .fixedSize()
+            Spacer(minLength: 8)
+            Text("No 5-hour limit reported for this plan")
+                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
     private func footer(_ usage: WeeklyUsage, now: Date) -> String {
         if message != nil { return "Last known usage · Couldn't refresh. Tap ↻ to retry." }
-        if usage.resetIsDue(at: now) { return "Weekly reset reached · checking for the new allowance." }
         let minutes = max(0, Int(now.timeIntervalSince(usage.fetchedAt) / 60))
         return "Account-wide · Updated \(minutes == 0 ? "just now" : "\(minutes)m ago")"
     }

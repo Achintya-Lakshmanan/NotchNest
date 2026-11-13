@@ -26,7 +26,7 @@ enum Snapshot {
         s1.tab = .music
         s1.nowPlaying = NowPlaying(app: .music, title: "After Hours", artist: "Night Drive",
                                    album: "Blue Hour", isPlaying: true,
-                                   elapsed: 96, duration: 244, artworkURL: nil)
+                                   elapsed: 96, duration: 244, artworkURL: nil, isFavorited: true)
         s1.battery = BatteryInfo(level: 0.62, isCharging: true, isPluggedIn: true, hasBattery: true)
         s1.artwork = sampleArtwork()
         s1.artworkColor = Color(red: 0.33, green: 0.40, blue: 0.85)
@@ -138,6 +138,22 @@ enum Snapshot {
         s12.timerRunning = true
         render(s12, size: metrics.expandedSize, to: base.appendingPathComponent("12_timer.png"))
 
+        // Timer idle (Start + stepper) and a Pomodoro break.
+        let idle = NotchState(metrics: metrics)
+        idle.isExpanded = true
+        idle.tab = .timer
+        idle.timerDuration = 25 * 60
+        idle.timerRemaining = 25 * 60
+        render(idle, size: metrics.expandedSize, to: base.appendingPathComponent("12_timer_idle.png"))
+        let rest = NotchState(metrics: metrics)
+        rest.isExpanded = true
+        rest.tab = .timer
+        rest.setPomodoroForPreview(PomodoroState(phase: .rest, round: 2))
+        rest.timerDuration = 5 * 60
+        rest.timerRemaining = 3 * 60 + 12
+        rest.timerRunning = true
+        render(rest, size: metrics.expandedSize, to: base.appendingPathComponent("12_timer_break.png"))
+
         // 5. Compact — playing + charging
         let s5 = NotchState(metrics: metrics)
         s5.nowPlaying = s1.nowPlaying
@@ -149,16 +165,89 @@ enum Snapshot {
         renderCodex(metrics: metrics, base: base)
         renderReminders(metrics: metrics, base: base)
         renderSettings(metrics: metrics, base: base)
+        renderFeatures(metrics: metrics, base: base, music: s1)
         let drawer = NotchState(metrics: metrics, menuBarApps: MenuBarAppsService(preview:
             ["Music", "Calendar", "Notes", "Safari", "Reminders", "Shortcuts"].enumerated().map { index, name in
                 MenuBarAppItem(id: "sample-\(index)", appName: name, label: name,
-                    icon: NSWorkspace.shared.icon(forFile: "/System/Applications/\(name).app"),
+                    icon: NSWorkspace.shared.icon(forFile: ["/System/Applications/\(name).app",
+                                                            "/System/Cryptexes/App/System/Applications/\(name).app",
+                                                            "/Applications/\(name).app"]
+                        .first { FileManager.default.fileExists(atPath: $0) } ?? "/System/Applications/\(name).app"),
                     visibility: index == 0 ? .covered : .visible, frame: nil, element: nil, pid: 0)
             }))
         drawer.isExpanded = true
         drawer.showingMenuBarApps = true
         render(drawer, size: metrics.expandedSize, to: base.appendingPathComponent("menu_bar_apps.png"))
         return true
+    }
+
+    /// Class mode, deadlines, lyrics and Claude alerts (fictional fixtures).
+    private static func renderFeatures(metrics: NotchMetrics, base: URL, music: NotchState) {
+        let now = Date()
+        let lyrics = NotchState(metrics: metrics)
+        lyrics.disableLiveRefresh = true
+        lyrics.isExpanded = true
+        lyrics.tab = .music
+        lyrics.nowPlaying = music.nowPlaying
+        lyrics.artwork = music.artwork
+        lyrics.artworkColor = music.artworkColor
+        lyrics.showingLyrics = true
+        lyrics.setLyricsForPreview(.synced([
+            LyricLine(time: 80, text: "Streetlights hum a quiet tune"),
+            LyricLine(time: 92, text: "We drive until the blue hour fades"),
+            LyricLine(time: 101, text: "And the city wakes without us"),
+        ]))
+        render(lyrics, size: metrics.expandedSize, to: base.appendingPathComponent("music_lyrics.png"))
+
+        let cal = Calendar.current
+        let midnight = cal.startOfDay(for: now)
+        func day(_ n: Int, _ hour: Double = 0) -> Date {
+            cal.date(byAdding: .day, value: n, to: midnight)!.addingTimeInterval(hour * 3600)
+        }
+        let deadlines = Deadline.from([
+            CalEvent(id: "d1", title: "Problem Set 4 due", start: now.addingTimeInterval(5 * 3600),
+                     end: now.addingTimeInterval(5 * 3600), isAllDay: false, colorComponents: [0.3, 0.65, 1, 1]),
+            CalEvent(id: "d2", title: "Late Drop - Deadline until 11:59 p.m. (ET)*", start: day(2), end: day(2, 1),
+                     isAllDay: false, colorComponents: [0.6, 0.5, 1, 1]),
+            CalEvent(id: "d3", title: "Midterm Exam 2", start: day(6, 18.25), end: day(6, 19.5),
+                     isAllDay: false, colorComponents: [1, 0.55, 0.35, 1]),
+        ], now: now)
+        let lecture = CalEvent(id: "lec", title: "Systems Seminar", start: now.addingTimeInterval(-38 * 60),
+                               end: now.addingTimeInterval(12 * 60), isAllDay: false,
+                               colorComponents: [0.3, 0.65, 1, 1], location: "Willard Building 062")
+        let next = CalEvent(id: "next", title: "Algorithms - LEC", start: now.addingTimeInterval(52 * 60),
+                            end: now.addingTimeInterval(102 * 60), isAllDay: false,
+                            colorComponents: [1, 0.6, 0.4, 1], location: "Thomas Building 100")
+
+        for (name, showing) in [("calendar_deadline_badge", false), ("calendar_deadlines", true)] {
+            let state = NotchState(metrics: metrics)
+            state.disableLiveRefresh = true
+            state.isExpanded = true
+            state.tab = .calendar
+            state.calendarAuthorized = true
+            state.monthEvents = [lecture, next]
+            state.deadlines = deadlines
+            state.showingDeadlines = showing
+            render(state, size: metrics.expandedSize, to: base.appendingPathComponent("\(name).png"))
+        }
+
+        for (name, event) in [("compact_class_live", lecture), ("compact_class_upcoming", next)] {
+            let state = NotchState(metrics: metrics)
+            state.disableLiveRefresh = true
+            state.todayEvents = [event]
+            render(state, size: metrics.compactSize, to: base.appendingPathComponent("\(name).png"))
+        }
+
+        let headsUp = NotchState(metrics: metrics)
+        headsUp.alert = AlertToast(symbol: "graduationcap.fill", title: next.title,
+                                   subtitle: "Starts in 10 min · Thomas Building 100", tint: next.color)
+        render(headsUp, size: metrics.toastSize, to: base.appendingPathComponent("class_heads_up.png"))
+
+        let claude = NotchState(metrics: metrics)
+        claude.disableLiveRefresh = true
+        claude.checkClaudeAlerts(WeeklyUsage(usedPercent: 30, resetsAt: now.addingTimeInterval(3 * 86400), fetchedAt: now,
+                                             session: .init(usedPercent: 93, resetsAt: now.addingTimeInterval(4740))), now: now)
+        render(claude, size: metrics.toastSize, to: base.appendingPathComponent("claude_low_alert.png"))
     }
 
     private static func renderSettings(metrics: NotchMetrics, base: URL) {
@@ -183,7 +272,16 @@ enum Snapshot {
         var arguments = originalArguments
         arguments["allowanceProvider"] = "Codex"
         UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
-        defer { UserDefaults.standard.setVolatileDomain(originalArguments, forName: UserDefaults.argumentDomain) }
+        // Both providers on for these fixtures, restored afterwards.
+        let settings = Settings.shared
+        let (codexWasShown, claudeWasShown) = (settings.showCodexUsage, settings.showClaudeUsage)
+        settings.showCodexUsage = true
+        settings.showClaudeUsage = true
+        defer {
+            UserDefaults.standard.setVolatileDomain(originalArguments, forName: UserDefaults.argumentDomain)
+            settings.showClaudeUsage = claudeWasShown
+            settings.showCodexUsage = codexWasShown
+        }
         let codex = CodexUsageService(usage: WeeklyUsage(
             usedPercent: 45, resetsAt: Date().addingTimeInterval(93720), fetchedAt: Date(), planType: "pro",
             session: .init(usedPercent: 20, resetsAt: Date().addingTimeInterval(11400))))
@@ -225,6 +323,9 @@ enum Snapshot {
         connect.tab = .codex
         render(connect, size: metrics.expandedSize, to: base.appendingPathComponent("claude_connect.png"))
 
+        // Codex not signed in / unavailable (the provider choice must be Codex again).
+        arguments["allowanceProvider"] = "Codex"
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
         let s16 = NotchState(metrics: metrics)
         s16.disableLiveRefresh = true
         s16.isExpanded = true

@@ -15,7 +15,7 @@ struct CompactView: View {
                     TimerPill(remaining: state.timerRemaining)
                         .transition(.scale.combined(with: .opacity))
                 } else if state.showsCompactMeeting, let ev = state.imminentEvent {
-                    MeetingPill(event: ev)
+                    MeetingPill(event: ev, part: rightWingBusy ? .combined : .indicator)
                         .transition(.scale.combined(with: .opacity))
                 } else if let np = state.displayedNowPlaying, settings.isMusicVisibleInCompact() {
                     ArtworkView(image: state.artwork, title: np.title, size: 22, corner: 5)
@@ -55,6 +55,12 @@ struct CompactView: View {
                         ChargingBadge(battery: state.battery, showPercent: false)
                             .transition(.scale.combined(with: .opacity))
                     }
+                } else if lowBattery {
+                    CompactBattery(battery: state.battery)
+                        .transition(.scale.combined(with: .opacity))
+                } else if !state.timerRunning, state.showsCompactMeeting, let ev = state.imminentEvent {
+                    MeetingPill(event: ev, part: .time)
+                        .transition(.scale.combined(with: .opacity))
                 } else if let np = state.displayedNowPlaying, settings.isMusicVisibleInCompact() {
                     EqualizerView(playing: np.isPlaying, color: .white)
                         .transition(.scale.combined(with: .opacity))
@@ -68,4 +74,11 @@ struct CompactView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    /// Downloads, charging and a low battery own the right wing; otherwise a class splits across both.
+    private var rightWingBusy: Bool {
+        (settings.showDownloadsInCompact && !state.downloads.isEmpty) || state.battery.isCharging || lowBattery
+    }
+
+    private var lowBattery: Bool { state.battery.hasBattery && !state.battery.isCharging && state.battery.percent <= 20 }
 }

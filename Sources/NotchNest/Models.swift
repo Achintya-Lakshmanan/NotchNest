@@ -34,7 +34,7 @@ struct NotchMetrics: Equatable {
 
     /// Small banner for transient Bluetooth toasts (much smaller than expanded).
     var toastSize: CGSize {
-        CGSize(width: 380, height: 64 + notchHeight)
+        CGSize(width: 380, height: 70 + notchHeight)
     }
 
     /// Compact pill for volume/brightness HUDs.
@@ -79,6 +79,8 @@ struct NowPlaying: Equatable {
     var elapsed: Double
     var duration: Double
     var artworkURL: String?
+    /// Apple Music's favourite (heart) state; nil when the player doesn't report one.
+    var isFavorited: Bool? = nil
 
     /// Identity for the track, ignoring transient playback position.
     var trackKey: String { "\(app.rawValue)|\(title)|\(artist)|\(album)" }
@@ -159,6 +161,20 @@ enum NotchTab: String, CaseIterable {
         case .shelf: return "tray.full"
         }
     }
+}
+
+struct PomodoroState: Equatable {
+    enum Phase: Equatable {
+        case focus, rest
+        func duration(round: Int) -> TimeInterval {
+            switch self {
+            case .focus: return 25 * 60
+            case .rest: return round % 4 == 0 ? 15 * 60 : 5 * 60
+            }
+        }
+    }
+    var phase: Phase
+    var round: Int
 }
 
 func formatMMSS(_ t: TimeInterval) -> String {
@@ -330,6 +346,10 @@ struct CalEvent: Identifiable, Equatable {
     var isAllDay: Bool
     var colorComponents: [CGFloat]   // RGBA
     var videoURL: URL? = nil
+    /// Room or place, with any meeting links removed.
+    var location: String? = nil
+    /// Marked "free" (e.g. a study block or reminder-style hold); never counted as a class.
+    var isFree: Bool = false
 
     var color: Color {
         guard colorComponents.count == 4 else { return .accentColor }
@@ -341,6 +361,13 @@ struct CalEvent: Identifiable, Equatable {
     }
 
     var isPast: Bool { end < Date() }
+
+    /// Overlaps the given day (multi-day events appear on every day they touch).
+    func occurs(on day: Date, calendar: Calendar = .current) -> Bool {
+        let dayStart = calendar.startOfDay(for: day)
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else { return false }
+        return start < dayEnd && (end > dayStart || (end == start && start >= dayStart))
+    }
     var isNow: Bool { start <= Date() && end >= Date() }
 
     /// Flagged all-day, or a timed event lasting a day or more (e.g. 12 AM–11:59 PM,
@@ -351,5 +378,122 @@ struct CalEvent: Identifiable, Equatable {
     /// calendars store deadlines as 12:00–1:00 AM events; those aren't meetings.
     var isDayMarker: Bool {
         coversWholeDay || start == Calendar.current.startOfDay(for: start)
+    }
+}
+
+// MARK: - Deadlines
+
+struct Deadline: Identifiable, Equatable {
+    let id: String
+    var title: String       // cleaned for display
+    var fullTitle: String
+    var due: Date
+    var colorComponents: [CGFloat]
+
+    var color: Color {
+        guard colorComponents.count == 4 else { return .orange }
+        return Color(.sRGB, red: colorComponents[0], green: colorComponents[1],
+                     blue: colorComponents[2], opacity: colorComponents[3])
+    }
+
+    func isUrgent(at now: Date) -> Bool { due.timeIntervalSince(now) < 24 * 3600 }
+
+    /// "in 5h", "in 3d", "in 40m".
+    func countdown(at now: Date) -> String {
+        let minutes = max(0, Int(ceil(due.timeIntervalSince(now) / 60)))
+        if minutes < 60 { return "in \(minutes)m" }
+        if minutes < 48 * 60 { return "in \(minutes / 60)h" }
+        return "in \(minutes / 1440)d"
+    }
+
+    private static let keyword = try! NSRegularExpression(
+        pattern: #"\b(deadline|due|exams?|midterms?|finals?|quiz(zes)?|assignments?|homework|hw\d*|submissions?|submit|last day)\b"#,
+        options: [.caseInsensitive])
+    /// Whole phrases that mention a keyword but describe a session, not a due date.
+    private static let notDeadline = try! NSRegularExpression(
+        pattern: #"\b(review sessions?|study (sessions?|groups?|hall)|(exam|midterm|final|quiz) (prep|review)|prep sessions?|office hours?|tutoring)\b"#,
+        options: [.caseInsensitive])
+    /// An explicit due word overrides the session phrases ("Exam review worksheet due").
+    private static let explicitDue = try! NSRegularExpression(
+        pattern: #"\b(due|deadline|submit|submissions?)\b"#, options: [.caseInsensitive])
+    private static let dueProcess = try! NSRegularExpression(
+        pattern: #"\bdue process\b"#, options: [.caseInsensitive])
+
+    static func looksLikeDeadline(_ title: String) -> Bool {
+        let range = NSRange(title.startIndex..., in: title)
+        func has(_ re: NSRegularExpression) -> Bool { re.firstMatch(in: title, range: range) != nil }
+        guard has(keyword), !has(dueProcess) else { return false }
+        return !has(notDeadline) || has(explicitDue)
+    }
+
+    /// Calendar events that look like deadlines, soonest first.
+    static func from(_ events: [CalEvent], now: Date = Date(), calendar: Calendar = .current) -> [Deadline] {
+        var seen = Set<String>()
+        return events.compactMap { event -> Deadline? in
+            let hasKeyword = looksLikeDeadline(event.title)
+            let midnightMarker = !event.isAllDay && event.start == calendar.startOfDay(for: event.start)
+            guard hasKeyword || midnightMarker else { return nil }
+            let due: Date
+            if event.coversWholeDay {
+                due = event.end.addingTimeInterval(-1)                       // end of the last day
+            } else if midnightMarker {
+                due = calendar.date(byAdding: .day, value: 1, to: event.start)!.addingTimeInterval(-1)
+            } else {
+                due = event.start
+            }
+            guard due > now, seen.insert(event.id).inserted else { return nil }
+            return Deadline(id: event.id, title: clean(event.title), fullTitle: event.title,
+                            due: due, colorComponents: event.colorComponents)
+        }
+        .sorted { $0.due < $1.due }
+    }
+
+    /// "Late Drop - Deadline until 11:59 p.m. (ET)*" → "Late Drop".
+    static func clean(_ title: String) -> String {
+        let trimmed = title.replacingOccurrences(of: #"\s*[-–—:]\s*Deadline\b.*$"#, with: "",
+                                                 options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "*")))
+        return trimmed.isEmpty ? title : trimmed
+    }
+}
+
+// MARK: - Lyrics
+
+struct LyricLine: Equatable {
+    var time: Double     // seconds into the track
+    var text: String
+}
+
+enum Lyrics: Equatable {
+    case synced([LyricLine])
+    case plain(String)
+    case instrumental
+    case unavailable
+    case failed          // network error; retried next time
+
+    /// Parses LRC ("[01:02.50] line"). Lines without a timestamp are skipped.
+    static func parseLRC(_ lrc: String) -> [LyricLine] {
+        let pattern = try! NSRegularExpression(pattern: #"\[(\d+):(\d+(?:\.\d+)?)\]"#)
+        var lines: [LyricLine] = []
+        for raw in lrc.components(separatedBy: .newlines) {
+            let range = NSRange(raw.startIndex..., in: raw)
+            let matches = pattern.matches(in: raw, range: range)
+            guard let last = matches.last, let textRange = Range(NSRange(location: last.range.upperBound,
+                length: range.length - last.range.upperBound), in: raw) else { continue }
+            let text = raw[textRange].trimmingCharacters(in: .whitespaces)
+            for match in matches {
+                guard let m = Range(match.range(at: 1), in: raw), let s = Range(match.range(at: 2), in: raw),
+                      let minutes = Double(raw[m]), let seconds = Double(raw[s]) else { continue }
+                lines.append(LyricLine(time: minutes * 60 + seconds, text: text))
+            }
+        }
+        return lines.sorted { $0.time < $1.time }
+    }
+
+    /// Index of the line being sung at `elapsed`, or nil before the first line.
+    static func currentIndex(in lines: [LyricLine], at elapsed: Double) -> Int? {
+        var result: Int?
+        for (index, line) in lines.enumerated() where line.time <= elapsed { result = index }
+        return result
     }
 }

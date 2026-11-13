@@ -31,7 +31,14 @@ for mapping in \
   'focus_popup:focus' \
   'caps_lock_popup:caps-lock' \
   'menu_bar_apps:menu-bar-apps' \
-  '3_shelf:shelf'; do
+  '3_shelf:shelf' \
+  'music_lyrics:lyrics' \
+  'calendar_deadlines:deadlines' \
+  'compact_class_live:class-live' \
+  'compact_class_upcoming:class-upcoming' \
+  'class_heads_up:class-heads-up' \
+  'claude_low_alert:claude-low-alert' \
+  '12_timer_break:pomodoro'; do
   cp "$screenshot_temp/${mapping%%:*}.png" "docs/screenshots/${mapping##*:}.png"
 done
 

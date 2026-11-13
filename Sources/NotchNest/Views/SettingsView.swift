@@ -7,16 +7,20 @@ struct SettingsPane: View {
     @EnvironmentObject var state: NotchState
     @AppStorage("settingsSection") private var sectionName = Section.general.rawValue
     @State private var draggedTab: NotchTab?
+    /// EventKit's calendar list, loaded when the section appears (not on every redraw).
+    @State private var calendarList: [CalendarService.CalendarInfo] = []
 
     enum Section: String, CaseIterable {
         case general = "General"
         case tabs = "Tabs"
+        case calendars = "Calendars"
         case notch = "Notch"
 
         var symbol: String {
             switch self {
             case .general: return "gearshape"
             case .tabs: return "square.grid.2x2"
+            case .calendars: return "calendar"
             case .notch: return "rectangle.topthird.inset.filled"
             }
         }
@@ -33,6 +37,7 @@ struct SettingsPane: View {
                     switch section {
                     case .general: general
                     case .tabs: tabs
+                    case .calendars: calendars
                     case .notch: notch
                     }
                 }
@@ -40,7 +45,7 @@ struct SettingsPane: View {
                 .padding(.vertical, 1)
             }
         }
-        .toggleStyle(.switch)
+        .toggleStyle(NotchSwitchStyle())
         .controlSize(.mini)
         .tint(.green)
         .padding(.top, 2)
@@ -99,13 +104,23 @@ struct SettingsPane: View {
             card {
                 row("Launch at login", isOn: $settings.launchAtLogin)
                 line
-                row("Meeting countdown in the notch", isOn: $settings.showMeetingCountdown)
+                row("Class & meeting countdown", isOn: $settings.showMeetingCountdown)
+                line
+                row("Claude limit alerts", isOn: $settings.claudeLimitAlerts)
+                line
+                row("Lyrics (from LRCLIB)", isOn: Binding(
+                    get: { settings.lyricsEnabled },
+                    set: { on in
+                        settings.lyricsEnabled = on
+                        if !on { state.showingLyrics = false }
+                    }))
                 line
                 row("Next reminder in Calendar", isOn: $settings.showCalendarReminder)
                 line
-                row("Focus and Caps Lock popups", isOn: $settings.showSystemPopups)
+                row(state.focusMonitor.isAvailable ? "Focus and Caps Lock popups" : "Caps Lock popups",
+                    isOn: $settings.showSystemPopups)
             }
-            if settings.showSystemPopups {
+            if settings.showSystemPopups, state.focusMonitor.isAvailable {
                 FocusAccessRow(monitor: state.focusMonitor).padding(.horizontal, 4)
             }
         }
@@ -113,7 +128,7 @@ struct SettingsPane: View {
 
     private var tabs: some View {
         VStack(alignment: .leading, spacing: 8) {
-            caption("Shown in the notch · drag to reorder")
+            caption("Tap to show or hide · drag to reorder")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                 ForEach(settings.orderedTabs, id: \.self) { tab in
                     // Not a Button: a button would swallow the mouse-down that starts a drag.
@@ -143,10 +158,70 @@ struct SettingsPane: View {
         }
     }
 
+    private var calendars: some View {
+        let list = calendarList
+        return VStack(alignment: .leading, spacing: 8) {
+            caption("Used for the grid, class mode and deadlines")
+            if !state.calendarAuthorized {
+                HStack(spacing: 10) {
+                    Text("Choose which calendars NotchNest reads.")
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                    Spacer(minLength: 8)
+                    Button("Connect Calendar") { state.requestCalendarAccess() }
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 11).padding(.vertical, 5)
+                        .background(.white.opacity(0.15), in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else if list.isEmpty {
+                Text("No calendars found.")
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 4)
+            } else {
+                card {
+                    ForEach(Array(list.enumerated()), id: \.element.id) { index, item in
+                        if index > 0 { line }
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(item.colorComponents.count >= 3
+                                      ? Color(red: item.colorComponents[0], green: item.colorComponents[1],
+                                              blue: item.colorComponents[2]) : .gray)
+                                .frame(width: 8, height: 8)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(item.title).font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.9))
+                                    .lineLimit(1)
+                                if !item.source.isEmpty {
+                                    Text(item.source).font(.system(size: 9)).foregroundStyle(.white.opacity(0.4))
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Toggle(item.title, isOn: Binding(
+                                get: { !settings.hiddenCalendars.contains(item.id) },
+                                set: { shown in
+                                    if shown { settings.hiddenCalendars.remove(item.id) }
+                                    else { settings.hiddenCalendars.insert(item.id) }
+                                    state.refreshCalendar()
+                                }))
+                                .labelsHidden()
+                        }
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 32)
+                    }
+                }
+            }
+        }
+        .onAppear { calendarList = state.calendar.calendars() }
+        .onChange(of: state.calendarAuthorized) { _, _ in calendarList = state.calendar.calendars() }
+    }
+
     private var notch: some View {
         VStack(alignment: .leading, spacing: 8) {
             card {
-                row("Download icon", isOn: $settings.showDownloadsInCompact)
+                row("Show download progress", isOn: $settings.showDownloadsInCompact)
                 line
                 row("Battery % when closed", isOn: $settings.batteryPercentInCompact)
                 line
@@ -240,6 +315,31 @@ struct SettingsPane: View {
     }
 }
 
+/// The system switch draws grey in a non-key panel, so on and off look alike.
+/// This one is always green when on.
+struct NotchSwitchStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { configuration.isOn.toggle() }
+        } label: {
+            Capsule()
+                .fill(configuration.isOn ? Color.green : Color.white.opacity(0.16))
+                .frame(width: 30, height: 18)
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle()
+                        .fill(.white)
+                        .shadow(color: .black.opacity(0.25), radius: 1, y: 0.5)
+                        .padding(2)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityRepresentation {
+            Toggle(isOn: configuration.$isOn) { configuration.label }
+        }
+    }
+}
+
 /// Reorders live as the dragged chip passes over another one.
 private struct TabDropDelegate: DropDelegate {
     let target: NotchTab
@@ -266,8 +366,7 @@ private struct FocusAccessRow: View {
 
     var body: some View {
         if !monitor.isAvailable {
-            Text("Focus popups aren't connected in this build. Caps Lock is ready.")
-                .font(.system(size: 10)).foregroundStyle(.white.opacity(0.5))
+            EmptyView()
         } else {
         switch monitor.authorization {
         case .notDetermined:

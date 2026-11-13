@@ -65,11 +65,12 @@ struct ExpandedView: View {
                     .monospacedDigit()
                     .lineLimit(1)
             }
-
-            Spacer(minLength: 0)
+            // Equal flexible side columns keep the tabs centred whatever the
+            // time or battery text width.
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Tab switcher (only enabled tabs)
-            HStack(spacing: 4) {
+            HStack(spacing: 3) {
                 ForEach(settings.enabledTabs, id: \.self) { tab in
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -79,9 +80,10 @@ struct ExpandedView: View {
                         }
                     } label: {
                         Image(systemName: tab.symbol)
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(!state.showingPreferences && !state.showingMenuBarApps && state.tab == tab ? .white : .white.opacity(0.45))
-                            .frame(width: 24, height: 20)
+                            .frame(width: 26, height: 22)
+                            .contentShape(Rectangle())
                             .background(!state.showingPreferences && !state.showingMenuBarApps && state.tab == tab ? .white.opacity(0.16) : .clear,
                                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     }
@@ -94,9 +96,10 @@ struct ExpandedView: View {
                     state.showingMenuBarApps.toggle()
                 } label: {
                     Image(systemName: "menubar.rectangle")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(state.showingMenuBarApps ? .white : .white.opacity(0.45))
-                        .frame(width: 24, height: 20)
+                        .frame(width: 26, height: 22)
+                        .contentShape(Rectangle())
                         .background(state.showingMenuBarApps ? .white.opacity(0.16) : .clear,
                                     in: RoundedRectangle(cornerRadius: 6))
                 }
@@ -110,9 +113,10 @@ struct ExpandedView: View {
                     }
                 } label: {
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(state.showingPreferences ? .white : .white.opacity(0.45))
-                        .frame(width: 26, height: 20)
+                        .frame(width: 26, height: 22)
+                        .contentShape(Rectangle())
                         .background(state.showingPreferences ? .white.opacity(0.16) : .clear,
                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
@@ -121,10 +125,12 @@ struct ExpandedView: View {
             }
             .fixedSize(horizontal: true, vertical: false)
 
-            Spacer(minLength: 0)
-
-            BatteryCluster()
-                .fixedSize(horizontal: true, vertical: false)
+            ViewThatFits(in: .horizontal) {
+                BatteryCluster(showETA: true, showAccessory: true)
+                BatteryCluster(showETA: false, showAccessory: true)
+                BatteryCluster(showETA: false, showAccessory: false)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
@@ -147,28 +153,58 @@ struct MusicPane: View {
                     .shadow(color: .black.opacity(0.45), radius: 8, y: 4)
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(np.title.isEmpty ? "Unknown" : np.title)
-                        .font(.system(size: 17, weight: .bold))
-                        .lineLimit(1)
-                    Text(np.artist)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
+                    if state.showingLyrics && Settings.shared.lyricsEnabled {
+                        LyricsView()
+                            .frame(height: 58, alignment: .topLeading)
+                            .transition(.opacity)
+                    } else {
+                        Text(np.title.isEmpty ? "Unknown" : np.title)
+                            .font(.system(size: 17, weight: .bold))
+                            .lineLimit(1)
+                        Text(np.artist)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
 
-                    ProgressBar(progress: np.progress, tint: state.artworkColor,
-                                onSeek: { state.seek(toFraction: $0) })
-                        .frame(height: 14)
-                        .padding(.top, 2)
+                    // Extrapolated between 2s polls so the bar and times move smoothly.
+                    TimelineView(.periodic(from: .now, by: np.isPlaying ? 0.5 : 60)) { context in
+                        let elapsed = state.estimatedElapsed(at: context.date)
+                        VStack(spacing: 3) {
+                            ProgressBar(progress: np.duration > 0 ? elapsed / np.duration : 0,
+                                        tint: state.artworkColor,
+                                        onSeek: { state.seek(toFraction: $0) })
+                                .frame(height: 14)
+                            HStack {
+                                Text(formatMMSS(elapsed))
+                                Spacer()
+                                Text("-" + formatMMSS(max(0, np.duration - elapsed)))
+                            }
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white.opacity(0.45))
+                        }
+                    }
 
-                    HStack(spacing: 16) {
+                    HStack(spacing: 14) {
                         CircleButton(symbol: "backward.fill", size: 15) { state.previous() }
                         CircleButton(symbol: np.isPlaying ? "pause.fill" : "play.fill", size: 18) { state.togglePlay() }
                         CircleButton(symbol: "forward.fill", size: 15) { state.next() }
                         Spacer()
+                        if let favorited = np.isFavorited {
+                            IconToggle(symbol: favorited ? "heart.fill" : "heart",
+                                       active: favorited, activeTint: .pink,
+                                       help: favorited ? "Remove from Favourites" : "Add to Favourites") {
+                                state.toggleFavorite()
+                            }
+                        }
+                        if Settings.shared.lyricsEnabled {
+                            IconToggle(symbol: "quote.bubble", active: state.showingLyrics, activeTint: .white,
+                                       help: state.showingLyrics ? "Hide lyrics" : "Show lyrics") {
+                                withAnimation(.easeInOut(duration: 0.2)) { state.toggleLyrics() }
+                            }
+                        }
                         OutputDeviceMenu(liveRefresh: !state.disableLiveRefresh)
-                        Text(np.app.rawValue)
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.4))
                     }
                     .padding(.top, 2)
                 }
@@ -182,12 +218,122 @@ struct MusicPane: View {
                     .foregroundStyle(.white.opacity(0.4))
                 Text("Nothing playing")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.55))
                 Text("Play something in Music or Spotify")
                     .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(.white.opacity(0.4))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
+/// Small icon button that lights up while active (heart, lyrics).
+struct IconToggle: View {
+    let symbol: String
+    let active: Bool
+    var activeTint: Color = .white
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(active ? activeTint : .white.opacity(0.7))
+                .frame(width: 28, height: 28)
+                .background(active ? activeTint.opacity(0.18) : .white.opacity(0.08), in: Circle())
+                .contentShape(Circle())
+                .symbolEffect(.bounce, value: active)
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
+/// Synced lyrics: previous, current and next line, following playback.
+struct LyricsView: View {
+    @EnvironmentObject var state: NotchState
+
+    var body: some View {
+        Group {
+            switch state.lyrics {
+            case .synced(let lines):
+                TimelineView(.periodic(from: .now, by: 0.25)) { context in
+                    syncedLines(lines, index: Lyrics.currentIndex(in: lines, at: state.estimatedElapsed(at: context.date)))
+                }
+            case .plain(let text):
+                ScrollView(showsIndicators: false) {
+                    Text(text)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            case .instrumental:
+                status("music.note", "Instrumental")
+            case .unavailable:
+                status("text.badge.xmark", "No lyrics found for this song")
+            case .failed:
+                status("wifi.exclamationmark", "Couldn't reach the lyrics service") {
+                    Task { await state.loadLyricsIfNeeded() }
+                }
+            case nil:
+                status("ellipsis", state.lyricsLoading ? "Finding lyrics…" : "")
+            }
+        }
+        .task(id: state.nowPlaying?.trackKey) { await state.loadLyricsIfNeeded() }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func syncedLines(_ lines: [LyricLine], index: Int?) -> some View {
+        let current: String = index.map { lines[$0].text } ?? "♪"
+        let nextIndex = (index ?? -1) + 1
+        let next: String? = nextIndex < lines.count ? lines[nextIndex].text : nil
+        return VStack(alignment: .leading, spacing: 3) {
+            songLine
+            line(current, size: 15, opacity: 1, bold: true)
+            line(next, size: 11, opacity: 0.5)
+        }
+        .animation(.easeInOut(duration: 0.25), value: index)
+    }
+
+    private func line(_ text: String?, size: CGFloat, opacity: Double, bold: Bool = false) -> some View {
+        Text(text?.isEmpty == false ? text! : " ")
+            .font(.system(size: size, weight: bold ? .bold : .medium))
+            .foregroundStyle(.white.opacity(opacity))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .id(text)
+    }
+
+    /// Keeps the song identifiable while lyrics replace the title.
+    private var songLine: some View {
+        let np = state.nowPlaying
+        return Text([np?.title, np?.artist].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
+            .font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.45))
+            .lineLimit(1)
+    }
+
+    private func status(_ symbol: String, _ text: String, retry: (() -> Void)? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            songLine
+            HStack(spacing: 8) {
+                Label(text, systemImage: symbol)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                if let retry {
+                    Button("Retry", action: retry)
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9).frame(height: 20)
+                        .background(.white.opacity(0.14), in: Capsule())
+                        .disabled(state.lyricsLoading)
+                }
+            }
         }
     }
 }
@@ -236,27 +382,27 @@ struct ShelfPane: View {
     var body: some View {
         Group {
             if state.shelf.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "tray.and.arrow.down.fill")
-                        .font(.system(size: 24, weight: .light))
-                        .foregroundStyle(.white.opacity(0.4))
-                    Text("Drag files here to stash, then AirDrop")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                dropZone(large: true)
             } else {
-                VStack(spacing: 6) {
-                    HStack {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 8) {
                         Text("\(state.shelf.count) stashed")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.55))
                         Spacer()
+                        Button { state.clearShelf() } label: {
+                            Text("Clear all")
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                                .padding(.horizontal, 10).frame(height: 24)
+                                .background(.white.opacity(0.1), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
                         Button { state.airDrop(state.shelf.map(\.url)) } label: {
                             Label("AirDrop all", systemImage: "dot.radiowaves.right")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 10.5, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 9).padding(.vertical, 4)
+                                .padding(.horizontal, 10).frame(height: 24)
                                 .background(.blue, in: Capsule())
                         }
                         .buttonStyle(.plain)
@@ -266,15 +412,34 @@ struct ShelfPane: View {
                             ForEach(state.shelf) { item in
                                 ShelfChip(item: item)
                             }
+                            dropZone(large: false)
                         }
                         .padding(.horizontal, 2)
                         .padding(.vertical, 4)
                     }
+                    Spacer(minLength: 0)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .scaleEffect(state.justDropped ? 1.04 : 1)
+    }
+
+    /// Dashed target: the whole card accepts drops, this just shows where.
+    private func dropZone(large: Bool) -> some View {
+        VStack(spacing: large ? 8 : 4) {
+            Image(systemName: "tray.and.arrow.down")
+                .font(.system(size: large ? 24 : 16, weight: .light))
+            Text(large ? "Drop files here to stash them, then AirDrop" : "Drop more")
+                .font(.system(size: large ? 11.5 : 9.5, weight: .medium))
+                .multilineTextAlignment(.center)
+        }
+        .foregroundStyle(.white.opacity(0.45))
+        // Small tile matches a file chip (62pt label + 6pt padding each side; 78pt tall).
+        .frame(maxWidth: large ? .infinity : 74, maxHeight: large ? .infinity : 78)
+        .frame(width: large ? nil : 74, height: large ? nil : 78)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(.white.opacity(0.18), style: StrokeStyle(lineWidth: 1.2, dash: [5, 4])))
     }
 }
 
@@ -290,9 +455,12 @@ struct ShelfChip: View {
                 .frame(width: 40, height: 40)
             Text(item.name)
                 .font(.system(size: 9))
-                .foregroundStyle(.white.opacity(0.7))
-                .lineLimit(1)
-                .frame(width: 58)
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .multilineTextAlignment(.center)
+                .frame(width: 62, height: 22, alignment: .top)
+                .help(item.name)
         }
         .padding(6)
         .background(.white.opacity(hovering ? 0.12 : 0.06),
@@ -333,63 +501,117 @@ struct TimerPane: View {
     @EnvironmentObject var state: NotchState
     private let presets = [1, 5, 10, 25]
 
+    private var accent: Color { state.pomodoro?.phase == .rest ? .green : .orange }
+    private var isIdle: Bool { !state.timerRunning && state.timerRemaining == state.timerDuration }
+
     var body: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 26) {
             ZStack {
                 Circle().stroke(.white.opacity(0.12), lineWidth: 8)
-                Circle()
-                    .trim(from: 0, to: state.timerProgress)
-                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 0.5), value: state.timerProgress)
+                if isIdle {
+                    // "Ready", not "done": the neutral track plus a thin accent hairline.
+                    Circle().inset(by: 7).stroke(accent.opacity(0.8), lineWidth: 2)
+                } else {
+                    Circle()
+                        .trim(from: 0, to: state.timerProgress)
+                        .stroke(accent, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .animation(.linear(duration: 0.5), value: state.timerProgress)
+                }
                 VStack(spacing: 1) {
                     Text(formatMMSS(state.timerRemaining))
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(.white)
-                    Text(state.timerRunning ? "remaining" : "timer")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.white.opacity(0.5))
+                    Text(statusLabel)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.55))
                 }
             }
-            .frame(width: 124, height: 124)
+            .frame(width: 136, height: 136)
 
-            VStack(alignment: .leading, spacing: 10) {
-                if state.timerRunning || state.timerRemaining != state.timerDuration {
-                    HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    if isIdle {
+                        pill("Start", icon: "play.fill", color: .orange, wide: true) { state.startTimer() }
+                        stepper
+                    } else {
                         pill(state.timerRunning ? "Pause" : "Resume",
                              icon: state.timerRunning ? "pause.fill" : "play.fill",
-                             color: .orange) {
+                             color: accent, wide: true) {
                             state.timerRunning ? state.pauseTimer() : state.startTimer()
                         }
-                        pill("Reset", icon: "arrow.counterclockwise", color: .white.opacity(0.15)) {
+                        pill("Reset", icon: "arrow.counterclockwise", color: .white.opacity(0.14)) {
                             state.resetTimer()
                         }
                     }
                 }
-                Text("Quick start").font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.5))
-                HStack(spacing: 8) {
-                    ForEach(presets, id: \.self) { m in
-                        pill("\(m)m", color: .white.opacity(0.12)) { state.setTimer(minutes: m) }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("QUICK START")
+                        .font(.system(size: 8.5, weight: .bold)).tracking(0.7)
+                        .foregroundStyle(.white.opacity(0.4))
+                    HStack(spacing: 6) {
+                        ForEach(presets, id: \.self) { m in
+                            pill("\(m)m", color: .white.opacity(0.1)) { state.setTimer(minutes: m) }
+                        }
                     }
                 }
-                pill("🍅 Pomodoro 25:00", color: .white.opacity(0.12)) { state.setTimer(minutes: 25) }
+                pill(state.pomodoro == nil ? "Pomodoro · 25 / 5" : "Pomodoro · round \(state.pomodoro!.round)",
+                     icon: "leaf.fill", color: state.pomodoro == nil ? .white.opacity(0.1) : .green.opacity(0.3)) {
+                    state.startPomodoro()
+                }
+                .help("25 min focus, 5 min break; a 15 min break every 4th round")
             }
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
+        .padding(.horizontal, 22)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func pill(_ title: String, icon: String? = nil, color: Color, action: @escaping () -> Void) -> some View {
+    private var statusLabel: String {
+        if let p = state.pomodoro { return p.phase == .focus ? "focus · round \(p.round)" : "break" }
+        if state.timerRunning { return "remaining" }
+        return isIdle ? "ready" : "paused"
+    }
+
+    /// Custom length, in whole minutes.
+    private var stepper: some View {
+        HStack(spacing: 0) {
+            stepButton("minus", -1)
+            Text("\(Int(state.timerDuration / 60)) min")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .frame(minWidth: 46)
+            stepButton("plus", 1)
+        }
+        .foregroundStyle(.white)
+        .frame(height: 28)
+        .background(.white.opacity(0.1), in: Capsule())
+    }
+
+    private func stepButton(_ symbol: String, _ delta: Int) -> some View {
+        Button { state.adjustTimer(byMinutes: delta) } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .bold))
+                .frame(width: 26, height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(delta > 0 ? "One minute longer" : "One minute shorter")
+    }
+
+    private func pill(_ title: String, icon: String? = nil, color: Color, wide: Bool = false,
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: 5) {
                 if let icon { Image(systemName: icon).font(.system(size: 10, weight: .bold)) }
-                Text(title).font(.system(size: 11, weight: .semibold))
+                Text(title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 10).padding(.vertical, 6)
+            .padding(.horizontal, wide ? 14 : 11)
+            .frame(height: 28)
             .background(color, in: Capsule())
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -486,14 +708,13 @@ struct WeatherPane: View {
                     }
 
                     if !w.hourly.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 14) {
-                                ForEach(w.hourly) { HourCell(hour: $0) }
-                            }
-                            .padding(.vertical, 2)
+                        // Seven evenly spread hours fill the card edge to edge.
+                        HStack(spacing: 0) {
+                            ForEach(w.hourly.prefix(7)) { HourCell(hour: $0).frame(maxWidth: .infinity) }
                         }
-                        .background(.white.opacity(0.08),
-                                   in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(.vertical, 7)
+                        .background(.white.opacity(0.1),
+                                   in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     Spacer(minLength: 0)
                 }
@@ -533,7 +754,7 @@ struct WeatherPane: View {
                     Image(systemName: "drop.fill").font(.system(size: 7))
                     Text("\(hour.precip)%").font(.system(size: 9, weight: .medium))
                 }
-                .foregroundStyle(hour.precip >= 30 ? Color(red: 0.6, green: 0.85, blue: 1.0) : .white.opacity(0.5))
+                .foregroundStyle(hour.precip >= 30 ? Color(red: 0.75, green: 0.92, blue: 1.0) : .white.opacity(0.75))
             }
             .frame(width: 40)
         }
@@ -612,6 +833,11 @@ struct MonthCalendarView: View {
         let f = DateFormatter(); f.dateFormat = "MMMM yyyy"; return f
     }()
     private let weekdays = ["S", "M", "T", "W", "T", "F", "S"]
+
+    private var isOnToday: Bool {
+        cal.isDate(state.visibleMonth, equalTo: Date(), toGranularity: .month)
+            && cal.isDateInToday(state.selectedDate)
+    }
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
     @ObservedObject private var settings = Settings.shared
@@ -634,13 +860,19 @@ struct MonthCalendarView: View {
 
                 Spacer()
 
+                // Only offered once you've browsed away; space is kept so the header doesn't shift.
                 Button { state.goToToday() } label: {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 12, weight: .bold))
+                    Text("Today")
+                        .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 20, height: 20)
-                        .background(.red, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                }.buttonStyle(.plain).help("Today")
+                        .padding(.horizontal, 9).frame(height: 20)
+                        .background(.white.opacity(0.14), in: Capsule())
+                }
+                .buttonStyle(.plain).help("Go to today")
+                .opacity(isOnToday ? 0 : 1)
+                .disabled(isOnToday)
+                .accessibilityHidden(isOnToday)
+                .animation(.easeOut(duration: 0.15), value: isOnToday)
             }
 
             // Weekday header
@@ -696,13 +928,15 @@ struct DayCell: View {
             Text("\(day)")
                 .font(.system(size: 11.5, weight: isSelected || isToday ? .bold : .regular))
                 .foregroundStyle(foreground)
+                // Sit a little high so the event dot never touches the numerals.
+                .offset(y: -1)
                 .frame(width: 19, height: 19)
                 .background(background)
                 .overlay(alignment: .bottom) {
                     Circle()
                         .fill(hasEvents ? (isToday ? Color.white : Color.white.opacity(0.7)) : .clear)
                         .frame(width: 3, height: 3)
-                        .offset(y: 2.5)
+                        .offset(y: -1)
                 }
                 .frame(maxWidth: .infinity)
         }
@@ -727,41 +961,149 @@ struct DayCell: View {
 
 struct DayEventsPanel: View {
     @EnvironmentObject var state: NotchState
-    @ObservedObject private var settings = Settings.shared
 
     private static let dayFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "EEEE, MMM d"; return f
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("EEEMMMd"); return f
     }()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(Self.dayFmt.string(from: state.selectedDate))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.6))
-
-            let events = state.selectedDayEvents
-            if events.isEmpty {
-                VStack(spacing: 6) {
-                    Image(systemName: "calendar.day.timeline.left")
-                        .font(.system(size: 20, weight: .light))
-                        .foregroundStyle(.white.opacity(0.3))
-                    Text("No events")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.4))
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .leading, spacing: 8) {
+                header(now: context.date)
+                if state.showingDeadlines {
+                    deadlineList(now: context.date)
+                } else {
+                    dayList
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 8) {
-                        ForEach(events) { ev in
-                            CalendarRow(event: ev, onJoin: ev.videoURL != nil ? { state.join(ev) } : nil)
-                        }
-                    }
-                }
-                .frame(maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func header(now: Date) -> some View {
+        let urgent = state.deadlines.contains { $0.isUrgent(at: now) }
+        return HStack(spacing: 6) {
+            Text(state.showingDeadlines ? "Deadlines" : Self.dayFmt.string(from: state.selectedDate))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.6))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            if !state.deadlines.isEmpty || state.showingDeadlines {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { state.showingDeadlines.toggle() }
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: state.showingDeadlines ? "chevron.left" : "flag.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(state.showingDeadlines ? "Events" : "\(state.deadlines.count)")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                    }
+                    .foregroundStyle(state.showingDeadlines ? .white : (urgent ? .orange : .white.opacity(0.8)))
+                    .padding(.horizontal, 7).frame(height: 20)
+                    .background((urgent && !state.showingDeadlines ? Color.orange : .white).opacity(0.14),
+                                in: Capsule())
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(state.showingDeadlines ? "Back to events" : "Upcoming deadlines")
+                .accessibilityLabel(state.showingDeadlines ? "Show events" : "Show \(state.deadlines.count) upcoming deadlines")
+            }
+        }
+    }
+
+    @ViewBuilder private var dayList: some View {
+        let events = state.selectedDayEvents
+        if events.isEmpty {
+            emptyState("calendar.day.timeline.left", "No events")
+        } else {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    ForEach(events) { ev in
+                        CalendarRow(event: ev, onJoin: ev.videoURL != nil ? { state.join(ev) } : nil)
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder private func deadlineList(now: Date) -> some View {
+        if state.deadlines.isEmpty {
+            emptyState("flag", "Nothing due in the next two weeks")
+        } else {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 7) {
+                    ForEach(state.deadlines) { deadline in
+                        // Tap to jump to that day's events.
+                        Button { withAnimation(.easeInOut(duration: 0.2)) { state.select(deadline.due) } } label: {
+                            DeadlineRow(deadline: deadline, now: now).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    private func emptyState(_ symbol: String, _ text: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(.white.opacity(0.3))
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(.white.opacity(0.4))
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct DeadlineRow: View {
+    let deadline: Deadline
+    let now: Date
+
+    private static let dayFmt: DateFormatter = {
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("EEE"); return f
+    }()
+
+    /// Matches the day list: end-of-day markers read "Sun · Due by 11:59 PM".
+    static func dueText(_ due: Date) -> String {
+        let time = CalendarRow.timeFmt.string(from: due)
+        let endOfDay = Calendar.current.component(.hour, from: due) == 23
+            && Calendar.current.component(.minute, from: due) == 59
+        return "\(dayFmt.string(from: due)) · " + (endOfDay ? "Due by \(time)" : "Due \(time)")
+    }
+
+    var body: some View {
+        let urgent = deadline.isUrgent(at: now)
+        HStack(alignment: .top, spacing: 8) {
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(urgent ? Color.orange : deadline.color)
+                .frame(width: 3)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(deadline.title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.95))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 5) {
+                    Text(deadline.countdown(at: now))
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundStyle(urgent ? .orange : .white.opacity(0.75))
+                    Text(Self.dueText(deadline.due))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 1)
+        .help(deadline.fullTitle)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -770,41 +1112,52 @@ struct CalendarRow: View {
     var onJoin: (() -> Void)? = nil
 
     static let timeFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+        // Follows the system 12/24-hour setting.
+        let f = DateFormatter(); f.setLocalizedDateFormatFromTemplate("jmm"); return f
     }()
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(event.color)
-                .frame(width: 8, height: 8)
-                .padding(.top, 4)
+            Group {
+                if event.isDayMarker && !event.coversWholeDay {
+                    Image(systemName: "flag.fill").font(.system(size: 8, weight: .bold)).foregroundStyle(event.color)
+                } else {
+                    Circle().fill(event.color)
+                }
+            }
+            .frame(width: 8, height: 8)
+            .padding(.top, 4)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(event.isPast ? 0.4 : 0.95))
                     .lineLimit(1)
-                Text(event.coversWholeDay
-                     ? "All day"
-                     : "\(Self.timeFmt.string(from: event.start)) – \(Self.timeFmt.string(from: event.end))")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(timeText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                    if event.isNow && !event.isDayMarker {
+                        Text("NOW")
+                            .font(.system(size: 8, weight: .black))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 5).padding(.vertical, 1.5)
+                            .background(.green, in: Capsule())
+                            .fixedSize()
+                    }
+                }
+                if let place = event.location, !event.coversWholeDay {
+                    Label(place, systemImage: "mappin")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .lineLimit(1)
+                        .help(place)
+                }
             }
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .layoutPriority(-1)
             Spacer(minLength: 0)
-            if event.isNow && !event.isDayMarker {
-                Text("NOW")
-                    .font(.system(size: 8, weight: .black))
-                    .foregroundStyle(.black)
-                    .padding(.horizontal, 5).padding(.vertical, 2)
-                    .background(.green, in: Capsule())
-                    .lineLimit(1)
-                    .fixedSize()
-                    .layoutPriority(1)
-            }
             if let onJoin {
                 Button(action: onJoin) {
                     Label("Join", systemImage: "video.fill")
@@ -820,5 +1173,16 @@ struct CalendarRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .help(event.title)
+    }
+
+    /// Midnight registrar markers are deadlines ("Due by 11:59 PM"), not 12–1 AM events.
+    private var timeText: String {
+        if event.coversWholeDay { return "All day" }
+        if event.isDayMarker {
+            let due = Calendar.current.startOfDay(for: event.start).addingTimeInterval(24 * 3600 - 60)
+            return "Due by \(Self.timeFmt.string(from: due))"
+        }
+        return "\(Self.timeFmt.string(from: event.start)) – \(Self.timeFmt.string(from: event.end))"
     }
 }

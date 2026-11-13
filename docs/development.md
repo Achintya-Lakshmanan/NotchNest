@@ -36,13 +36,14 @@ Paths below are relative to `Sources/NotchNest`.
 | `Models.swift`, `Settings.swift` | Define display data, panel dimensions and saved preferences. |
 | `Services/DisplayRouting.swift` | Choose the built-in display or pause for mirroring and closed-lid use. |
 | `Services/MediaController.swift`, `Services/ColorExtractor.swift` | Read playback and artwork, then extract the background color. |
-| `Services/CalendarService.swift`, `Services/ReminderService.swift` | Read EventKit data and choose events and reminders to show. |
+| `Services/CalendarService.swift`, `Services/ReminderService.swift` | Read EventKit data (per-occurrence IDs, hidden calendars, declined and free events skipped) and choose events and reminders to show. |
 | `Services/CodexUsageService.swift` | Read weekly allowance through a short-lived Codex app-server process. |
 | `Services/ClaudeUsageService.swift` | Read Claude's weekly usage through a separate WebKit sign-in, without importing credentials from other apps. |
 | `Services/BatteryMonitor.swift`, `Services/BluetoothMonitor.swift`, `Services/BluetoothEventMonitor.swift` | Read battery status and track device connections. |
 | `Services/AudioOutput.swift`, `Services/HUDController.swift`, `Services/BrightnessControl.swift` | Select audio output and handle volume and brightness controls. |
 | `Services/FocusMonitor.swift` | Observe shared Focus status through Apple's Intents API and filter duplicate or unknown states. |
 | `Services/MenuBarAppsService.swift`, `Services/MenuBarShortcut.swift` | Scan menu-bar extras on demand and open the drawer with a registered Control-Option-M hotkey. |
+| `Services/LyricsService.swift` | Fetch lyrics from LRCLIB (exact match, then a duration-matched search) while the lyrics view is open. |
 | `Services/WeatherService.swift` | Fetch the State College forecast from Open-Meteo. |
 | `Services/DownloadMonitor.swift` | Watch Downloads for temporary browser files. |
 | `Services/AirDropService.swift`, `Services/LoginItem.swift` | Open AirDrop sharing and manage launch at login. |

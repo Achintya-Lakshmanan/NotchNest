@@ -12,6 +12,8 @@ final class NotchController: NSObject {
     private var batteryTimer: Timer?
     private var calendarTimer: Timer?
     private var weatherTimer: Timer?
+    private var claudeTimer: Timer?
+    private var lastClaudeCheck: Date?
     private var bluetoothTimer: Timer?
     private let hudController = HUDController()
     private var bluetoothEventMonitor: BluetoothEventMonitor?
@@ -60,7 +62,7 @@ final class NotchController: NSObject {
                 self.state?.showAlert(AlertToast(symbol: "capslock.fill",
                     title: enabled ? "Caps Lock On" : "Caps Lock Off",
                     subtitle: enabled ? "Typing in uppercase" : "Normal typing",
-                    tint: enabled ? .orange : .gray), duration: 2)
+                    tint: enabled ? .orange : .gray), duration: 2, key: "capslock", maxWait: 5)
             }
         }
         applyDisplayTarget(target)
@@ -70,7 +72,7 @@ final class NotchController: NSObject {
             self.state?.showAlert(AlertToast(symbol: enabled ? "moon.fill" : "moon",
                 title: enabled ? "Focus On" : "Focus Off",
                 subtitle: enabled ? "Notifications silenced" : "Notifications resumed",
-                tint: enabled ? .purple : .gray), duration: 2.5)
+                tint: enabled ? .purple : .gray), duration: 2.5, key: "focus", maxWait: 30)
         }
 
         // First fill.
@@ -94,10 +96,13 @@ final class NotchController: NSObject {
     private func setupTimers() {
         mediaTimer = schedule(every: 2.0) { [weak self] in
             guard let self, let state = self.state else { return }
-            // Idle backoff: poll ~every 10s when nothing is playing (AppleScript is costly).
-            if state.nowPlaying == nil {
+            // AppleScript is costly: every 2s while playing or open, every 4s while
+            // paused and closed (so pressing play shows up quickly), every 10s when
+            // no player reports anything, and never while the screens sleep.
+            if self.displaysAsleep { return }
+            if state.nowPlaying?.isPlaying != true && !state.isExpanded {
                 self.mediaIdleTicks += 1
-                if self.mediaIdleTicks < 5 { return }
+                if self.mediaIdleTicks < (state.nowPlaying == nil ? 5 : 2) { return }
                 self.mediaIdleTicks = 0
             } else {
                 self.mediaIdleTicks = 0
@@ -114,6 +119,25 @@ final class NotchController: NSObject {
         }
         calendarTimer = schedule(every: 60) { [weak self] in
             self?.state?.refreshCalendar()
+            self?.state?.checkClassHeadsUp()
+        }
+        // Background Claude check for limit popups: only when connected, alerts are on,
+        // and Claude is shown. The pane's own refresh also feeds the same alerts.
+        // Ticks every 5 min; how often it actually fetches depends on how close the
+        // last reading was to a limit (ClaudeUsageService.backgroundInterval).
+        // Skipped in Low Power Mode and while the screens sleep.
+        claudeTimer = schedule(every: 300) { [weak self] in
+            guard let self, let state = self.state else { return }
+            let settings = Settings.shared
+            guard settings.claudeLimitAlerts, settings.showClaudeUsage, state.claudeUsage.isConnected,
+                  !self.displaysAsleep, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+            let now = Date()
+            let interval = ClaudeUsageService.backgroundInterval(for: state.claudeUsage.usage,
+                                                                 pluggedIn: state.battery.isPluggedIn, now: now)
+            // Timers only fire late, so allow a little slack.
+            if let last = self.lastClaudeCheck, now.timeIntervalSince(last) < interval - 30 { return }
+            self.lastClaudeCheck = now
+            Task { await state.claudeUsage.refresh() }
         }
         weatherTimer = schedule(every: 900) { [weak self] in
             self?.state?.refreshWeather()
@@ -156,10 +180,13 @@ final class NotchController: NSObject {
 
     /// Timer on `.common` so polling keeps working during tracking/scroll modes.
     @discardableResult
-    private func schedule(every interval: TimeInterval, _ block: @escaping @MainActor () -> Void) -> Timer {
+    private func schedule(every interval: TimeInterval, _ block: @escaping @MainActor @Sendable () -> Void) -> Timer {
+        // Added to the main run loop below, so the callback is already on the main actor.
         let timer = Timer(timeInterval: interval, repeats: true) { _ in
-            Task { @MainActor in block() }
+            MainActor.assumeIsolated { block() }
         }
+        // Let macOS coalesce wake-ups with other timers.
+        timer.tolerance = interval * 0.1
         RunLoop.main.add(timer, forMode: .common)
         return timer
     }

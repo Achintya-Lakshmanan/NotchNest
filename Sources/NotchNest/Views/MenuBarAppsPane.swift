@@ -17,11 +17,16 @@ struct MenuBarAppsPane: View {
                 }
                 Spacer(minLength: 4)
                 if service.shortcutAvailable {
-                    Text("⌃⌥M").font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.55))
+                    Text("⌃⌥M").font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .padding(.horizontal, 7).frame(height: 23)
+                        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+                        .help("Shortcut to open this drawer")
                 }
                 Button { service.refresh() } label: {
-                    Image(systemName: "arrow.clockwise").frame(width: 24, height: 24)
+                    Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
+                        .frame(width: 25, height: 23)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
                 }
                 .buttonStyle(.plain).help("Refresh menu bar apps")
                 .accessibilityLabel("Refresh menu bar apps")
@@ -92,12 +97,14 @@ private struct MenuBarAppButton: View {
                 if item.visibility == .covered || item.visibility == .offscreen {
                     Image(systemName: "eye.slash.fill").font(.system(size: 8)).foregroundStyle(.orange)
                         .padding(5)
+                        .accessibilityLabel("Hidden in the menu bar")
                 }
             }
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
-        .help("Open \(item.label) menu\(item.visibility == .covered ? " • behind the notch" : "")")
+        .help("Open \(item.label) menu" + (item.visibility == .covered ? "\nHidden behind the notch"
+              : item.visibility == .offscreen ? "\nHidden: the menu bar is full" : ""))
         .accessibilityLabel("Open \(item.label) menu")
     }
 }

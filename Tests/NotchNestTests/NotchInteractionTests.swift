@@ -13,7 +13,7 @@ final class NotchInteractionTests: XCTestCase {
         let state = NotchState(metrics: metrics, menuBarApps: MenuBarAppsService(preview: []))
         state.disableLiveRefresh = true
         let pointer = Pointer()
-        let presentation = NotchPresentation(state: state, pointerLocation: { pointer.point }, closeDelay: 0.012)
+        let presentation = NotchPresentation(state: state, pointerLocation: { pointer.point }, closeDelay: 0.012, installsGlobalMonitors: false)
         presentation.panel.isReleasedWhenClosed = false
         presentation.show(on: metrics)
         return (state, presentation, pointer)
@@ -22,6 +22,15 @@ final class NotchInteractionTests: XCTestCase {
     private func move(_ point: CGPoint, pointer: Pointer, presentation: NotchPresentation) {
         pointer.point = point
         presentation.pointerMoved(to: point)
+    }
+
+    /// Polls for an expected change instead of a fixed sleep, so a busy machine
+    /// can't fail the test. Fixed sleeps remain only where nothing should change.
+    private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            try await Task.sleep(for: .milliseconds(5))
+        }
     }
 
     private var left: CGPoint { CGPoint(x: metrics.compactFrame.minX + 25, y: metrics.compactFrame.midY) }
@@ -37,7 +46,7 @@ final class NotchInteractionTests: XCTestCase {
                 XCTAssertTrue(state.isExpanded)
                 XCTAssertEqual(presentation.panel.frame, metrics.panelFrame(for: metrics.expandedSize))
                 move(outside, pointer: pointer, presentation: presentation)
-                try await Task.sleep(for: .milliseconds(30))
+                try await waitUntil { !state.isExpanded }
                 XCTAssertFalse(state.isExpanded)
                 XCTAssertEqual(presentation.panel.frame.size, metrics.compactSize)
                 XCTAssertEqual(presentation.panel.frame.midX, metrics.compactFrame.midX, accuracy: 0.75)
@@ -118,7 +127,7 @@ final class NotchInteractionTests: XCTestCase {
         state.btPopup = BTToast(device: BTDevice(address: "test", name: "AirPods", batteryMain: 80,
             batteryLeft: nil, batteryRight: nil, batteryCase: nil, minorType: "Headphones"), kind: .connected)
         move(outside, pointer: pointer, presentation: presentation)
-        try await Task.sleep(for: .milliseconds(40))
+        try await waitUntil { !state.isExpanded && presentation.panel.frame.size == self.metrics.toastSize }
         XCTAssertFalse(state.isExpanded)
         XCTAssertEqual(presentation.panel.frame.size, metrics.toastSize)
     }
@@ -136,7 +145,7 @@ final class NotchInteractionTests: XCTestCase {
         XCTAssertTrue(state.isExpanded)
         pointer.point = left
         presentation.close()
-        try await Task.sleep(for: .milliseconds(30))
+        try await waitUntil { !state.isExpanded }
         XCTAssertFalse(state.isExpanded)
         XCTAssertFalse(state.showingMenuBarApps)
         move(right, pointer: pointer, presentation: presentation)
@@ -153,7 +162,7 @@ final class NotchInteractionTests: XCTestCase {
         state.menuBarApps.select(item)
         XCTAssertFalse(presentation.panel.isVisible)
         pointer.point = right
-        try await Task.sleep(for: .milliseconds(150))
+        try await waitUntil { presentation.panel.isVisible && state.isExpanded }
         XCTAssertTrue(presentation.panel.isVisible)
         XCTAssertTrue(state.isExpanded)
         XCTAssertEqual(presentation.panel.frame.size, metrics.expandedSize)
@@ -188,13 +197,13 @@ final class NotchInteractionTests: XCTestCase {
             XCTAssertEqual(presentation.panel.frame.size, metrics.expandedSize)
         }
         move(outside, pointer: pointer, presentation: presentation)
-        try await Task.sleep(for: .milliseconds(30))
+        try await waitUntil { presentation.panel.frame.size == self.metrics.hudSize }
         XCTAssertEqual(presentation.panel.frame.size, metrics.hudSize)
         state.hud = nil
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { presentation.panel.frame.size == self.metrics.toastSize }
         XCTAssertEqual(presentation.panel.frame.size, metrics.toastSize)
         state.alert = nil
-        try await Task.sleep(for: .milliseconds(20))
+        try await waitUntil { presentation.panel.frame.size == self.metrics.compactSize }
         XCTAssertEqual(presentation.panel.frame.size, metrics.compactSize)
     }
 }

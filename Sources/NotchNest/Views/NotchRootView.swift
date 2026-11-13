@@ -17,8 +17,17 @@ struct NotchRootView: View {
                         let c = state.artworkColor ?? .clear
                         let visible = state.musicPresentationActive && showArtworkTint(now: context.date)
                         NotchShape()
-                            .fill(LinearGradient(colors: [c.opacity(0.7), c.opacity(0.0)],
-                                                 startPoint: .top, endPoint: .center))
+                            .fill(presentationInset > 0
+                                  // Open card: tint starts just below the hardware notch.
+                                  ? LinearGradient(colors: [c.opacity(0.7), c.opacity(0.0)],
+                                                   startPoint: .top, endPoint: .center)
+                                  // Collapsed pill: rise from the bottom so there is no
+                                  // coloured seam against the black camera housing.
+                                  : LinearGradient(stops: [
+                                        .init(color: c.opacity(0), location: 0),
+                                        .init(color: c.opacity(0), location: 0.2),
+                                        .init(color: c.opacity(0.4), location: 1),
+                                    ], startPoint: .top, endPoint: .bottom))
                             .padding(.top, presentationInset)
                             .opacity(visible ? 1 : 0)
                             .animation(.easeInOut(duration: 1.2), value: visible)
@@ -51,8 +60,9 @@ struct NotchRootView: View {
                 .shadow(color: state.chargeFlash ? .green.opacity(0.45) : .clear,
                        radius: state.chargeFlash ? 14 : 0)
 
-            // Timer countdown ring tracing the notch outline.
-            if state.timerRunning {
+            // Timer countdown ring tracing the collapsed notch (the open Timer tab
+            // has its own ring, so the outline would just look like a stray border).
+            if state.timerRunning && !state.isExpanded {
                 NotchShape()
                     .trim(from: 0, to: state.timerProgress)
                     .stroke(Color.orange, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))

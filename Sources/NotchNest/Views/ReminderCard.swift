@@ -103,10 +103,14 @@ struct ReminderCard: View {
                 .help("\(reminder.title) · \(reminder.listName)\n\(reminder.due.formatted(date: .complete, time: reminder.dateOnly ? .omitted : .shortened))\nOpen Apple Reminders")
                 .accessibilityElement(children: .combine)
             case .connect:
-                compactLabel("Your next to-do, here.")
+                compactLabel("See your next reminder here")
                 Button(service.requestingAccess ? "Connecting…" : "Connect") { service.requestAccess() }
-                    .buttonStyle(.plain).font(.system(size: 10, weight: .semibold)).foregroundStyle(lilac)
-                    .disabled(service.requestingAccess || !liveRefresh)
+                    .buttonStyle(.plain).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
+                    .padding(.horizontal, 9).frame(height: 20)
+                    .background(lilac.opacity(0.35), in: Capsule())
+                    // Snapshots render it live-looking; only a real request in flight disables it.
+                    .disabled(service.requestingAccess)
+                    .allowsHitTesting(liveRefresh)
             case .denied:
                 compactLabel("Reminders access is off.")
                 Button("Open Settings") { service.openSettings() }
