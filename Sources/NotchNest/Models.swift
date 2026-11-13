@@ -342,4 +342,14 @@ struct CalEvent: Identifiable, Equatable {
 
     var isPast: Bool { end < Date() }
     var isNow: Bool { start <= Date() && end >= Date() }
+
+    /// Flagged all-day, or a timed event lasting a day or more (e.g. 12 AM–11:59 PM,
+    /// or a multi-day booking). These aren't meetings, so they never get "Now".
+    var coversWholeDay: Bool { isAllDay || end.timeIntervalSince(start) >= 23 * 3600 }
+
+    /// Whole-day events and timed entries pinned to midnight. Feeds like university
+    /// calendars store deadlines as 12:00–1:00 AM events; those aren't meetings.
+    var isDayMarker: Bool {
+        coversWholeDay || start == Calendar.current.startOfDay(for: start)
+    }
 }

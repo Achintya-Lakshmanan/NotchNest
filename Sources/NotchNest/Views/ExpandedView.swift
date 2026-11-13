@@ -614,8 +614,10 @@ struct MonthCalendarView: View {
     private let weekdays = ["S", "M", "T", "W", "T", "F", "S"]
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
+    @ObservedObject private var settings = Settings.shared
+
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             // Header
             HStack(spacing: 7) {
                 Button { state.changeMonth(by: -1) } label: {
@@ -636,7 +638,7 @@ struct MonthCalendarView: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 20, height: 20)
                         .background(.red, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }.buttonStyle(.plain).help("Today")
             }
@@ -654,10 +656,13 @@ struct MonthCalendarView: View {
             // Day grid
             LazyVGrid(columns: columns, spacing: 1) {
                 ForEach(Array(days.enumerated()), id: \.offset) { _, day in
-                    if let day { DayCell(day: day) } else { Color.clear.frame(height: 23) }
+                    if let day { DayCell(day: day) } else { Color.clear.frame(height: 19) }
                 }
             }
             Spacer(minLength: 0)
+            if settings.showCalendarReminder {
+                ReminderCard(service: state.reminders, liveRefresh: !state.disableLiveRefresh, compact: true)
+            }
         }
     }
 
@@ -687,18 +692,19 @@ struct DayCell: View {
 
     var body: some View {
         Button { state.select(date) } label: {
-            // Compact enough that a six-week month fits the fixed pane height.
-            VStack(spacing: 0) {
-                Text("\(day)")
-                    .font(.system(size: 12, weight: isSelected || isToday ? .bold : .regular))
-                    .foregroundStyle(foreground)
-                    .frame(width: 20, height: 20)
-                    .background(background)
-                Circle()
-                    .fill(hasEvents ? Color.white.opacity(0.7) : .clear)
-                    .frame(width: 3, height: 3)
-            }
-            .frame(maxWidth: .infinity)
+            // 19pt rows: a six-week month plus the reminder strip fit the fixed pane.
+            Text("\(day)")
+                .font(.system(size: 11.5, weight: isSelected || isToday ? .bold : .regular))
+                .foregroundStyle(foreground)
+                .frame(width: 19, height: 19)
+                .background(background)
+                .overlay(alignment: .bottom) {
+                    Circle()
+                        .fill(hasEvents ? (isToday ? Color.white : Color.white.opacity(0.7)) : .clear)
+                        .frame(width: 3, height: 3)
+                        .offset(y: 2.5)
+                }
+                .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
     }
@@ -754,9 +760,6 @@ struct DayEventsPanel: View {
                 }
                 .frame(maxHeight: .infinity)
             }
-            if settings.showCalendarReminder {
-                ReminderCard(service: state.reminders, liveRefresh: !state.disableLiveRefresh)
-            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -782,7 +785,7 @@ struct CalendarRow: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white.opacity(event.isPast ? 0.4 : 0.95))
                     .lineLimit(1)
-                Text(event.isAllDay
+                Text(event.coversWholeDay
                      ? "All day"
                      : "\(Self.timeFmt.string(from: event.start)) – \(Self.timeFmt.string(from: event.end))")
                     .font(.system(size: 11))
@@ -792,7 +795,7 @@ struct CalendarRow: View {
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             .layoutPriority(-1)
             Spacer(minLength: 0)
-            if event.isNow {
+            if event.isNow && !event.isDayMarker {
                 Text("NOW")
                     .font(.system(size: 8, weight: .black))
                     .foregroundStyle(.black)

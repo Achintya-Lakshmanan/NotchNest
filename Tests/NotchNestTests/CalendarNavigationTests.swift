@@ -69,3 +69,33 @@ final class CalendarNavigationTests: XCTestCase {
         XCTAssertEqual(state.selectedDayEvents.map(\.id), ["current"])
     }
 }
+
+final class WholeDayEventTests: XCTestCase {
+    private func event(_ hours: Double, allDay: Bool = false) -> CalEvent {
+        let start = Date().addingTimeInterval(-3600)
+        return CalEvent(id: UUID().uuidString, title: "x", start: start,
+                        end: start.addingTimeInterval(hours * 3600), isAllDay: allDay, colorComponents: [])
+    }
+
+    func testDayLongTimedEventsCountAsWholeDay() {
+        XCTAssertTrue(event(23 + 59.0 / 60).coversWholeDay)   // 12:00 AM – 11:59 PM
+        XCTAssertTrue(event(72).coversWholeDay)               // multi-day
+        XCTAssertTrue(event(1, allDay: true).coversWholeDay)
+    }
+
+    func testMidnightDeadlinesAreDayMarkers() {
+        let midnight = Calendar.current.startOfDay(for: Date())
+        let deadline = CalEvent(id: "d", title: "Late Add - Deadline", start: midnight,
+                                end: midnight.addingTimeInterval(3600), isAllDay: false, colorComponents: [])
+        XCTAssertTrue(deadline.isDayMarker)
+        XCTAssertFalse(deadline.coversWholeDay)
+        let lecture = CalEvent(id: "l", title: "CSE 597", start: midnight.addingTimeInterval(13 * 3600 + 25 * 60),
+                               end: midnight.addingTimeInterval(14 * 3600 + 15 * 60), isAllDay: false, colorComponents: [])
+        XCTAssertFalse(lecture.isDayMarker)
+    }
+
+    func testMeetingsAreNotWholeDay() {
+        XCTAssertFalse(event(1).coversWholeDay)
+        XCTAssertFalse(event(8).coversWholeDay)
+    }
+}

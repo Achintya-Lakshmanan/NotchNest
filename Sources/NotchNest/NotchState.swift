@@ -391,7 +391,7 @@ final class NotchState: ObservableObject {
     var nextEvent: CalEvent? {
         let now = Date()
         return todayEvents
-            .filter { !$0.isAllDay && $0.end > now }
+            .filter { !$0.isDayMarker && $0.end > now }
             .min { $0.start < $1.start }
     }
 

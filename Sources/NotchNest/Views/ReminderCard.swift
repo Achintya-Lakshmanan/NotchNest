@@ -3,18 +3,23 @@ import SwiftUI
 struct ReminderCard: View {
     @ObservedObject var service: ReminderService
     var liveRefresh = true
+    /// One-line strip (under the month grid) instead of the tall card.
+    var compact = false
     private let lilac = Color(red: 0.72, green: 0.65, blue: 1)
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             Group {
-                if case let .ready(reminder) = service.state {
+                if compact {
+                    compactRow(now: context.date)
+                } else if case let .ready(reminder) = service.state {
                     reminderButton(reminder, now: context.date)
                 } else {
                     placeholder
                 }
             }
-            .padding(10)
+            .padding(.horizontal, compact ? 9 : 10)
+            .padding(.vertical, compact ? 6 : 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(lilac.opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
@@ -69,6 +74,62 @@ struct ReminderCard: View {
         .buttonStyle(.plain)
         .help("\(reminder.title)\n\(reminder.due.formatted(date: .complete, time: reminder.dateOnly ? .omitted : .shortened))\nOpen Apple Reminders")
         .accessibilityElement(children: .combine)
+    }
+
+    private func compactRow(now: Date) -> some View {
+        HStack(spacing: 6) {
+            switch service.state {
+            case let .ready(reminder):
+                let overdue = reminder.isOverdue(at: now)
+                Button { service.openReminders() } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: overdue ? "exclamationmark.circle.fill" : "bell.badge.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(overdue ? .orange : lilac)
+                        Text(reminder.title)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.95))
+                            .lineLimit(1)
+                        Spacer(minLength: 4)
+                        Text(reminder.dueLabel(at: now))
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(overdue ? .orange : lilac.opacity(0.95))
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("\(reminder.title) · \(reminder.listName)\n\(reminder.due.formatted(date: .complete, time: reminder.dateOnly ? .omitted : .shortened))\nOpen Apple Reminders")
+                .accessibilityElement(children: .combine)
+            case .connect:
+                compactLabel("Your next to-do, here.")
+                Button(service.requestingAccess ? "Connecting…" : "Connect") { service.requestAccess() }
+                    .buttonStyle(.plain).font(.system(size: 10, weight: .semibold)).foregroundStyle(lilac)
+                    .disabled(service.requestingAccess || !liveRefresh)
+            case .denied:
+                compactLabel("Reminders access is off.")
+                Button("Open Settings") { service.openSettings() }
+                    .buttonStyle(.plain).font(.system(size: 10, weight: .semibold)).foregroundStyle(lilac)
+            case .loading:
+                compactLabel("Checking reminders…")
+            case .empty:
+                compactLabel("No dated reminders")
+            case .failed:
+                compactLabel("Couldn't load reminders.")
+                Button("Retry") { service.refresh() }
+                    .buttonStyle(.plain).font(.system(size: 10, weight: .semibold)).foregroundStyle(lilac)
+            }
+        }
+        .frame(height: 15)
+    }
+
+    private func compactLabel(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "bell.badge.fill").font(.system(size: 9)).foregroundStyle(lilac)
+            Text(text).font(.system(size: 10)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+            Spacer(minLength: 4)
+        }
     }
 
     private var placeholder: some View {
