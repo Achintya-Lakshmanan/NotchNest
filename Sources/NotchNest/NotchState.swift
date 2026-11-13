@@ -51,10 +51,7 @@ final class NotchState: ObservableObject {
     @Published var btDevices: [BTDevice] = []
     @Published var btPopup: BTToast?
 
-    // Weather
-    @Published var weather: WeatherInfo?
-
-    // Generic alert toast (rain / battery)
+    // Generic alert toast (battery / Claude / class)
     @Published var alert: AlertToast?
     private var alertToken = 0
     private var alertQueue: [PendingAlert] = []
@@ -62,7 +59,6 @@ final class NotchState: ObservableObject {
     private var alertShownAt: Date?
     private var visibleAlertKey: String? { visibleAlert?.key }
     private var presentationCancellables: Set<AnyCancellable> = []
-    private var rainAlerted = false
     private var lowBatteryWarned = false
     private var fullNotified = false
 
@@ -831,32 +827,6 @@ final class NotchState: ObservableObject {
             subtitle: name,
             tint: Color(red: 0.35, green: 0.75, blue: 1.0)
         ))
-    }
-
-    // MARK: Weather
-
-    func refreshWeather() {
-        WeatherService.fetch { [weak self] info in
-            guard let self, let info else { return }
-            if self.weather != info {
-                self.weather = info
-            }
-            self.checkRainAlert(info)
-        }
-    }
-
-    /// Alert when it's dry now but rain looks likely in the next few hours.
-    private func checkRainAlert(_ w: WeatherInfo) {
-        let dryNow = !WeatherInfo.isPrecip(w.code)
-        let soon = w.hourly.prefix(3).contains { $0.precip >= 50 || WeatherInfo.isPrecip($0.code) }
-        if dryNow && soon && !rainAlerted {
-            rainAlerted = true
-            showAlert(AlertToast(symbol: "cloud.rain.fill", title: "Rain Likely Soon",
-                                 subtitle: "Showers expected within a few hours",
-                                 tint: Color(red: 0.5, green: 0.8, blue: 1.0)))
-        } else if !soon {
-            rainAlerted = false
-        }
     }
 
     // MARK: HUD

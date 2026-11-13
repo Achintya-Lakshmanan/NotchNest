@@ -42,8 +42,9 @@ enum Snapshot {
         s2.monthEvents = [
             CalEvent(id: "a", title: "Standup", start: now.addingTimeInterval(-1800),
                      end: now.addingTimeInterval(900), isAllDay: false, colorComponents: [0.2, 0.6, 1, 1]),
-            CalEvent(id: "b", title: "Project review", start: now.addingTimeInterval(3600),
-                     end: now.addingTimeInterval(7200), isAllDay: false, colorComponents: [1, 0.4, 0.3, 1]),
+            CalEvent(id: "b", title: "Urban resilience sync", start: now.addingTimeInterval(3600),
+                     end: now.addingTimeInterval(7200), isAllDay: false, colorComponents: [1, 0.4, 0.3, 1],
+                     videoURL: URL(string: "https://zoom.us/j/0")),
             CalEvent(id: "c", title: "Gym", start: now.addingTimeInterval(18000),
                      end: now.addingTimeInterval(21600), isAllDay: false, colorComponents: [0.4, 0.8, 0.4, 1]),
         ]
@@ -94,24 +95,6 @@ enum Snapshot {
                                 subtitle: "Typing in uppercase", tint: .orange)
         render(caps, size: metrics.toastSize, to: base.appendingPathComponent("caps_lock_popup.png"))
 
-        // 8. Weather
-        let s8 = NotchState(metrics: metrics)
-        s8.isExpanded = true
-        s8.tab = .weather
-        s8.weather = WeatherInfo(temp: 72, high: 78, low: 61, unit: "°F",
-                                 code: 1, isDay: true, city: "State College",
-                                 hourly: [
-                                    HourForecast(id: "0", label: "Now", temp: 72, code: 1, isDay: true, precip: 0),
-                                    HourForecast(id: "1", label: "3 PM", temp: 74, code: 2, isDay: true, precip: 10),
-                                    HourForecast(id: "2", label: "4 PM", temp: 73, code: 61, isDay: true, precip: 55),
-                                    HourForecast(id: "3", label: "5 PM", temp: 70, code: 95, isDay: true, precip: 80),
-                                    HourForecast(id: "4", label: "6 PM", temp: 67, code: 80, isDay: true, precip: 40),
-                                    HourForecast(id: "5", label: "7 PM", temp: 64, code: 3, isDay: false, precip: 20),
-                                    HourForecast(id: "6", label: "8 PM", temp: 62, code: 0, isDay: false, precip: 0),
-                                 ])
-        s8.battery = BatteryInfo(level: 0.8, isCharging: false, isPluggedIn: false, hasBattery: true)
-        render(s8, size: metrics.expandedSize, to: base.appendingPathComponent("8_weather.png"))
-
         // 9. Volume HUD
         let s9 = NotchState(metrics: metrics)
         s9.hud = HUDInfo(kind: .volume, value: 0.6)
@@ -121,13 +104,6 @@ enum Snapshot {
         let s10 = NotchState(metrics: metrics)
         s10.hud = HUDInfo(kind: .brightness, value: 0.75)
         render(s10, size: metrics.hudSize, to: base.appendingPathComponent("10_hud_brightness.png"))
-
-        // 11. Rain alert toast
-        let s11 = NotchState(metrics: metrics)
-        s11.alert = AlertToast(symbol: "cloud.rain.fill", title: "Rain Likely Soon",
-                               subtitle: "Showers expected within a few hours",
-                               tint: Color(red: 0.5, green: 0.8, blue: 1.0))
-        render(s11, size: metrics.toastSize, to: base.appendingPathComponent("11_rain_alert.png"))
 
         // 12. Timer running
         let s12 = NotchState(metrics: metrics)

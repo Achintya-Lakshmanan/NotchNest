@@ -39,7 +39,6 @@ deadline to jump to its day.
 
 The other tabs cover a few everyday jobs.
 
-- Weather shows State College conditions, an hourly forecast and rain chances.
 - Timer has 1, 5, 10 and 25-minute presets, a −/+ stepper for any length, and a
   countdown around the notch. Pomodoro runs 25-minute focus rounds with 5-minute
   breaks (15 minutes every fourth round) and announces each switch.
@@ -96,17 +95,17 @@ The drawer does not move or hide other apps' icons.
 These are renders of the app's own views with sample data. The song, artwork,
 events, reminder and usage figures are examples, not personal account data.
 
-| Calendar and reminders | Hourly weather |
+| Calendar and reminders | Deadlines |
 | --- | --- |
-| <img src="docs/screenshots/calendar.png" alt="Month calendar with a next reminder strip under the grid and two events beside it" width="480"> | <img src="docs/screenshots/weather.png" alt="State College weather with hourly temperatures and rain chances" width="480"> |
+| <img src="docs/screenshots/calendar.png" alt="Month calendar with a next reminder strip under the grid and two events beside it" width="480"> | <img src="docs/screenshots/deadlines.png" alt="Deadlines list beside the month grid with countdowns, the nearest in orange" width="480"> |
 
-| Synced lyrics | Deadlines |
+| Synced lyrics | Timer |
 | --- | --- |
-| <img src="docs/screenshots/lyrics.png" alt="Music tab with the current and next lyric line in place of the title, and heart, lyrics and output buttons" width="480"> | <img src="docs/screenshots/deadlines.png" alt="Deadlines list beside the month grid with countdowns, the nearest in orange" width="480"> |
+| <img src="docs/screenshots/lyrics.png" alt="Music tab with the current and next lyric line in place of the title, and heart, lyrics and output buttons" width="480"> | <img src="docs/screenshots/timer.png" alt="Timer with fifteen minutes remaining and quick-start buttons" width="480"> |
 
-| Timer | Pomodoro break |
-| --- | --- |
-| <img src="docs/screenshots/timer.png" alt="Timer with fifteen minutes remaining and quick-start buttons" width="480"> | <img src="docs/screenshots/pomodoro.png" alt="Green Pomodoro break ring with three minutes left in round two" width="480"> |
+Pomodoro break.
+
+<img src="docs/screenshots/pomodoro.png" alt="Green Pomodoro break ring with three minutes left in round two" width="480">
 
 | Codex weekly allowance | Claude weekly allowance |
 | --- | --- |
@@ -213,8 +212,6 @@ MacBook display restores it. Timers and stashed files stay in memory while hidde
 
 ## Current limits
 
-- Weather is hardcoded to State College, Pennsylvania, and comes from Open-Meteo.
-  There is no location picker or Apple Weather integration.
 - Reminders need a due date. Undated tasks do not appear in the strip.
 - The download indicator detects temporary browser files. It does not estimate
   percentage complete or time remaining.

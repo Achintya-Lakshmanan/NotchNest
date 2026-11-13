@@ -44,7 +44,6 @@ Paths below are relative to `Sources/NotchNest`.
 | `Services/FocusMonitor.swift` | Observe shared Focus status through Apple's Intents API and filter duplicate or unknown states. |
 | `Services/MenuBarAppsService.swift`, `Services/MenuBarShortcut.swift` | Scan menu-bar extras on demand and open the drawer with a registered Control-Option-M hotkey. |
 | `Services/LyricsService.swift` | Fetch lyrics from LRCLIB (exact match, then a duration-matched search) while the lyrics view is open. |
-| `Services/WeatherService.swift` | Fetch the State College forecast from Open-Meteo. |
 | `Services/DownloadMonitor.swift` | Watch Downloads for temporary browser files. |
 | `Services/AirDropService.swift`, `Services/LoginItem.swift` | Open AirDrop sharing and manage launch at login. |
 | `Views/` | Draw the compact notch, expanded tabs, controls and Preferences. |
@@ -63,7 +62,7 @@ Run this from the repository root.
 The script builds the debug executable, renders the app's views offscreen and
 copies the selected PNGs into `docs/screenshots`. It does not restart or replace
 the installed app. It uses fictional music and reminder data, generated cover
-artwork and sample weather and allowance values. It does not fetch account data,
+artwork and sample allowance values. It does not fetch account data,
 read your calendar or query Music for artwork.
 
 The images reflect the rendering Mac's date, clock format and system fonts.

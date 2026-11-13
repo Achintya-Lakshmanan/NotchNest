@@ -34,22 +34,6 @@ struct NotchRootView: View {
                             .animation(.easeInOut(duration: 0.5), value: state.artworkColor)
                     }
                 }
-                // Weather paints the whole card edge-to-edge (no black frame around the sky).
-                .overlay {
-                    if let w = state.weather, showsWeatherSky {
-                        let notch = state.metrics.notchHeight / state.metrics.expandedSize.height
-                        let sky = WeatherPane.sky(w)
-                        NotchShape()
-                            .fill(LinearGradient(stops: [
-                                .init(color: .black, location: 0),
-                                .init(color: .black, location: notch),
-                                .init(color: sky[0], location: min(1, notch + 0.22)),
-                                .init(color: sky[1], location: 1),
-                            ], startPoint: .top, endPoint: .bottom))
-                            .transition(.opacity)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.25), value: showsWeatherSky)
                 // Only stroke for transient feedback (drop / just-charged), never by default.
                 .overlay {
                     if strokeWidth > 0 {
@@ -114,11 +98,6 @@ struct NotchRootView: View {
     private func showArtworkTint(now: Date) -> Bool {
         if state.isExpanded { return true }
         return settings.isMusicVisibleInCompact(now: now)
-    }
-
-    private var showsWeatherSky: Bool {
-        state.isExpanded && state.tab == .weather && !state.showingPreferences
-            && !state.showingMenuBarApps && state.hud == nil && state.btPopup == nil && state.alert == nil
     }
 
     private var presentationInset: CGFloat {

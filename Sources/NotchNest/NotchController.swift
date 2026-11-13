@@ -11,7 +11,6 @@ final class NotchController: NSObject {
     private var mediaTimer: Timer?
     private var batteryTimer: Timer?
     private var calendarTimer: Timer?
-    private var weatherTimer: Timer?
     private var claudeTimer: Timer?
     private var lastClaudeCheck: Date?
     private var bluetoothTimer: Timer?
@@ -79,7 +78,6 @@ final class NotchController: NSObject {
         state.refreshNowPlaying()
         state.battery = BatteryMonitor.current()
         state.refreshCalendar()
-        state.refreshWeather()
     }
 
     private func pollBluetooth() {
@@ -138,9 +136,6 @@ final class NotchController: NSObject {
             if let last = self.lastClaudeCheck, now.timeIntervalSince(last) < interval - 30 { return }
             self.lastClaudeCheck = now
             Task { await state.claudeUsage.refresh() }
-        }
-        weatherTimer = schedule(every: 900) { [weak self] in
-            self?.state?.refreshWeather()
         }
 
         // Bluetooth: IOBluetooth for connect/disconnect toasts; system_profiler for battery/UI list.

@@ -141,7 +141,6 @@ struct DownloadItem: Identifiable, Equatable {
 enum NotchTab: String, CaseIterable {
     case music = "Music"
     case calendar = "Calendar"
-    case weather = "Weather"
     case timer = "Timer"
     case codex = "Codex"
     case mirror = "Mirror"
@@ -154,7 +153,6 @@ enum NotchTab: String, CaseIterable {
         switch self {
         case .music: return "music.note"
         case .calendar: return "calendar"
-        case .weather: return "cloud.sun.fill"
         case .timer: return "timer"
         case .codex: return "chart.bar.fill"
         case .mirror: return "camera.fill"
@@ -182,79 +180,13 @@ func formatMMSS(_ t: TimeInterval) -> String {
     return String(format: "%d:%02d", s / 60, s % 60)
 }
 
-// MARK: - Generic alert toast (rain, battery, …)
+// MARK: - Generic alert toast (battery, Claude, …)
 
 struct AlertToast: Equatable {
     var symbol: String
     var title: String
     var subtitle: String
     var tint: Color
-}
-
-// MARK: - Weather
-
-struct HourForecast: Identifiable, Equatable {
-    var id: String          // ISO time string
-    var label: String       // "Now", "2 PM", …
-    var temp: Int
-    var code: Int
-    var isDay: Bool
-    var precip: Int         // precipitation probability %
-}
-
-struct WeatherInfo: Equatable {
-    var temp: Int
-    var high: Int
-    var low: Int
-    var unit: String        // "°F" / "°C"
-    var code: Int           // WMO weather code
-    var isDay: Bool
-    var city: String
-    var hourly: [HourForecast] = []
-
-    var symbol: String { WeatherInfo.symbol(code: code, isDay: isDay) }
-
-    static func isPrecip(_ code: Int) -> Bool {
-        switch code {
-        case 51...67, 71...77, 80...86, 95...99: return true
-        default: return false
-        }
-    }
-
-    static func symbol(code: Int, isDay: Bool) -> String {
-        switch code {
-        case 0:           return isDay ? "sun.max.fill" : "moon.stars.fill"
-        case 1, 2:        return isDay ? "cloud.sun.fill" : "cloud.moon.fill"
-        case 3:           return "cloud.fill"
-        case 45, 48:      return "cloud.fog.fill"
-        case 51, 53, 55, 56, 57: return "cloud.drizzle.fill"
-        case 61, 63, 65, 66, 67: return "cloud.rain.fill"
-        case 71, 73, 75, 77:     return "snowflake"
-        case 80, 81, 82:  return "cloud.heavyrain.fill"
-        case 85, 86:      return "cloud.snow.fill"
-        case 95, 96, 99:  return "cloud.bolt.rain.fill"
-        default:          return "cloud.fill"
-        }
-    }
-
-    var summary: String {
-        switch code {
-        case 0:           return "Clear"
-        case 1, 2:        return "Partly Cloudy"
-        case 3:           return "Cloudy"
-        case 45, 48:      return "Foggy"
-        case 51, 53, 55:  return "Drizzle"
-        case 56, 57:      return "Freezing Drizzle"
-        case 61, 63, 65:  return "Rain"
-        case 66, 67:      return "Freezing Rain"
-        case 71, 73, 75, 77: return "Snow"
-        case 80, 81, 82:  return "Showers"
-        case 85, 86:      return "Snow Showers"
-        case 95:          return "Thunderstorm"
-        case 96, 99:      return "Thunderstorm"
-        default:          return "—"
-        }
-    }
 }
 
 // MARK: - HUD (volume / brightness)

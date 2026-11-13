@@ -20,7 +20,6 @@ mkdir -p docs/screenshots
 for mapping in \
   '1_music_charging:music' \
   '17_calendar_reminder:calendar' \
-  '8_weather:weather' \
   '12_timer:timer' \
   '13_codex:codex' \
   'claude:claude' \

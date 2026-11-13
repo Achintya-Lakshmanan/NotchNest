@@ -35,7 +35,6 @@ struct ExpandedView: View {
                     switch state.tab {
                     case .music: MusicPane()
                     case .calendar: CalendarPane()
-                    case .weather: WeatherPane()
                     case .timer: TimerPane()
                     case .codex: AIUsagePane(service: state.codexUsage, claude: state.claudeUsage,
                                           liveRefresh: !state.disableLiveRefresh)
@@ -671,117 +670,6 @@ struct MirrorPane: View {
     }
 }
 
-// MARK: - Weather pane
-
-struct WeatherPane: View {
-    @EnvironmentObject var state: NotchState
-
-    var body: some View {
-        ZStack {
-            // The sky gradient is drawn full-bleed by NotchRootView.
-            if let w = state.weather {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(w.city)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.9))
-                                .lineLimit(1)
-                            Text("\(w.temp)\(w.unit)")
-                                .font(.system(size: 40, weight: .bold))
-                                .foregroundStyle(.white)
-                            HStack(spacing: 10) {
-                                Text(w.summary).font(.system(size: 13, weight: .medium))
-                                Text("H:\(w.high)°  L:\(w.low)°").font(.system(size: 12, weight: .medium)).opacity(0.85)
-                            }
-                            .foregroundStyle(.white.opacity(0.9))
-                        }
-                        Spacer()
-                        Image(systemName: w.symbol)
-                            .symbolRenderingMode(.multicolor)
-                            .font(.system(size: 50))
-                            .symbolEffect(.variableColor.iterative, options: .repeating,
-                                          isActive: WeatherInfo.isPrecip(w.code))
-                            .symbolEffect(.pulse, options: .repeating, isActive: w.code == 0)
-                            .shadow(color: .black.opacity(0.2), radius: 6)
-                            .id(w.code)
-                    }
-
-                    if !w.hourly.isEmpty {
-                        // Seven evenly spread hours fill the card edge to edge.
-                        HStack(spacing: 0) {
-                            ForEach(w.hourly.prefix(7)) { HourCell(hour: $0).frame(maxWidth: .infinity) }
-                        }
-                        .padding(.vertical, 7)
-                        .background(.white.opacity(0.1),
-                                   in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 2)
-                .padding(.top, 2)
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "cloud.sun.fill")
-                        .symbolRenderingMode(.multicolor)
-                        .font(.system(size: 26))
-                    Text("Loading weather…")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { if state.weather == nil { state.refreshWeather() } }
-    }
-
-    struct HourCell: View {
-        let hour: HourForecast
-        var body: some View {
-            VStack(spacing: 3) {
-                Text(hour.label)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.85))
-                Image(systemName: WeatherInfo.symbol(code: hour.code, isDay: hour.isDay))
-                    .symbolRenderingMode(.multicolor)
-                    .font(.system(size: 15))
-                    .frame(height: 18)
-                Text("\(hour.temp)°")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                HStack(spacing: 1) {
-                    Image(systemName: "drop.fill").font(.system(size: 7))
-                    Text("\(hour.precip)%").font(.system(size: 9, weight: .medium))
-                }
-                .foregroundStyle(hour.precip >= 30 ? Color(red: 0.75, green: 0.92, blue: 1.0) : .white.opacity(0.75))
-            }
-            .frame(width: 40)
-        }
-    }
-
-    /// Sky gradient based on time of day + condition.
-    static func sky(_ w: WeatherInfo) -> [Color] {
-        if !w.isDay {
-            return [Color(red: 0.06, green: 0.08, blue: 0.22), Color(red: 0.12, green: 0.14, blue: 0.30)]
-        }
-        switch w.code {
-        case 0, 1:
-            return [Color(red: 0.16, green: 0.52, blue: 0.93), Color(red: 0.45, green: 0.78, blue: 0.98)]
-        case 2, 3, 45, 48:
-            return [Color(red: 0.40, green: 0.50, blue: 0.62), Color(red: 0.58, green: 0.67, blue: 0.77)]
-        case 51...67, 80...82:
-            return [Color(red: 0.26, green: 0.34, blue: 0.45), Color(red: 0.40, green: 0.49, blue: 0.60)]
-        case 71...77, 85, 86:
-            return [Color(red: 0.55, green: 0.62, blue: 0.73), Color(red: 0.78, green: 0.83, blue: 0.90)]
-        case 95...99:
-            return [Color(red: 0.18, green: 0.16, blue: 0.32), Color(red: 0.34, green: 0.30, blue: 0.48)]
-        default:
-            return [Color(red: 0.20, green: 0.45, blue: 0.80), Color(red: 0.45, green: 0.70, blue: 0.95)]
-        }
-    }
-}
-
 // MARK: - Calendar pane (month grid + side panel)
 
 struct CalendarPane: View {
@@ -1159,16 +1047,19 @@ struct CalendarRow: View {
             .layoutPriority(-1)
             Spacer(minLength: 0)
             if let onJoin {
+                // Icon-only so the time line keeps its full width.
                 Button(action: onJoin) {
-                    Label("Join", systemImage: "video.fill")
+                    Image(systemName: "video.fill")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(.green.opacity(0.9), in: Capsule())
+                        .frame(width: 24, height: 24)
+                        .background(.green.opacity(0.9), in: Circle())
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .help("Join meeting")
+                .accessibilityLabel("Join meeting")
+                .padding(.top, 2)
                 .layoutPriority(1)
             }
         }
