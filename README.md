@@ -15,9 +15,10 @@ Resume and the overview comes back, with artwork, playback controls, a seek bar
 and an audio output menu. Spotify playback is supported too.
 
 Calendar puts a month grid beside the selected day's events. Each visit starts
-on today. A small reminder card below the events shows your next dated task.
-If nothing is upcoming, it shows the most recently overdue reminder. Click the
-card to open Apple Reminders. NotchNest never completes or edits reminders.
+on today. A one-line reminder strip under the grid shows your next dated task
+and when it is due. If nothing is upcoming, it shows the most recently overdue
+reminder. Click it to open Apple Reminders. NotchNest never completes or edits
+reminders.
 
 The other tabs cover a few everyday jobs.
 
@@ -30,7 +31,8 @@ The other tabs cover a few everyday jobs.
 - Mirror opens a front-camera preview and stops the camera when you leave.
 
 The collapsed notch can show a meeting countdown, music, charging status or an
-active download indicator. Small popups handle AirPods connections and battery
+active download indicator. All-day events and deadlines stored as midnight
+entries do not trigger the countdown. Small popups handle AirPods connections and battery
 warnings. Focus changes and Caps Lock get brief popups too. Volume and brightness
 keys use notch controls in place of the macOS HUD.
 
@@ -43,8 +45,10 @@ and a matching Apple provisioning profile. Enable Share Focus Status for the mod
 says "Focus" because Apple reports whether notifications are silenced, not the
 name of the active mode. macOS may still display its own Focus banner.
 
-Open the gear button to choose tabs, set quiet hours or enable launch at login.
-You can turn off the reminder card there too.
+Open the gear button for Preferences, grouped into General, Tabs and Notch.
+Click a tab to show or hide it, or drag tabs to change their order in the notch.
+You can also hide Codex or Claude in the AI Usage tab, set quiet hours, turn off
+the reminder strip or enable launch at login.
 
 The menu-bar button beside the gear opens a drawer of menu-bar apps. Press
 Control-Option-M to open it without reaching a menu-bar icon, then click an app
@@ -67,7 +71,7 @@ events, reminder and usage figures are examples, not personal account data.
 
 | Calendar and reminders | Hourly weather |
 | --- | --- |
-| <img src="docs/screenshots/calendar.png" alt="Month calendar with two events and a next reminder card" width="480"> | <img src="docs/screenshots/weather.png" alt="State College weather with hourly temperatures and rain chances" width="480"> |
+| <img src="docs/screenshots/calendar.png" alt="Month calendar with a next reminder strip under the grid and two events beside it" width="480"> | <img src="docs/screenshots/weather.png" alt="State College weather with hourly temperatures and rain chances" width="480"> |
 
 | Timer | Codex weekly allowance |
 | --- | --- |
@@ -149,8 +153,8 @@ You can review them in System Settings under Privacy & Security.
 | Downloads folder | Detect unfinished downloads and show a completion notice. |
 
 macOS labels Reminders permission as full access. NotchNest uses it only to read
-the title, due date and list details for the card. Reminder fetching stops when
-the card is hidden. Codex also stops refreshing when its tab is closed and uses
+the title, due date and list details for the strip. Reminder fetching stops when
+the strip is hidden. Codex also stops refreshing when its tab is closed and uses
 your existing sign-in. It does not start model tasks or redeem reset credits.
 Claude has its own app-local WebKit sign-in. NotchNest does not import cookies or
 credentials from Claude Desktop or your browser. It releases the hidden web page
@@ -167,7 +171,7 @@ MacBook display restores it. Timers and stashed files stay in memory while hidde
 
 - Weather is hardcoded to State College, Pennsylvania, and comes from Open-Meteo.
   There is no location picker or Apple Weather integration.
-- Reminders need a due date. Undated tasks do not appear in the card.
+- Reminders need a due date. Undated tasks do not appear in the strip.
 - The download indicator detects temporary browser files. It does not estimate
   percentage complete or time remaining.
 - Bluetooth battery details depend on what macOS reports for the device.
